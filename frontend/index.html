@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Second Brain AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              display: ['Space Grotesk', 'Inter', 'ui-sans-serif', 'system-ui'],
+            },
+            colors: {
+              ink: '#17211b',
+              paper: '#f6f3ea',
+              moss: '#4f6f52',
+              brass: '#c28b35',
+              clay: '#b85f46',
+              slate: '#314047',
+            },
+            boxShadow: {
+              soft: '0 24px 80px rgba(23, 33, 27, 0.14)',
+              insetline: 'inset 0 0 0 1px rgba(23, 33, 27, 0.08)',
+            },
+          },
+        },
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-paper">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
