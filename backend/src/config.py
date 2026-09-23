@@ -5,8 +5,8 @@ load_dotenv()
 
 class Settings:
     # Qdrant
-    QDRANT_HOST: str = os.getenv("QDRANT_HOST", "localhost")
-    QDRANT_PORT: int = int(os.getenv("QDRANT_PORT", "6333"))
+    QDRANT_URL: str = os.getenv("QDRANT_URL", "")
+    QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
     QDRANT_COLLECTION: str = os.getenv("QDRANT_COLLECTION", "second_brain")
 
     # Gemini
@@ -25,9 +25,9 @@ class Settings:
     ]
     # Model names from Google AI Studio
     # - Embedding model: models/gemini-embedding-001 produces 3072-dim vectors (matches knowledge_base)
-    # - Generation model: gemini-flash-latest
+    # - Generation model: gemini-3.1-lite
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
-    GENERATION_MODEL: str = os.getenv("GENERATION_MODEL", "gemini-flash-latest")
+    GENERATION_MODEL: str = os.getenv("GENERATION_MODEL", "gemini-3.1-flash-lite")
 
     # Rate limiting
     RATE_LIMIT_PER_MIN: int = int(os.getenv("RATE_LIMIT_PER_MIN", "60"))
