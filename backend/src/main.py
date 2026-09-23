@@ -1,4 +1,3 @@
-import uvicorn
 from fastapi import FastAPI
 from src.config import settings
 
@@ -10,7 +9,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Health endpoint at app level (must be before router inclusion)
 @app.get("/health", response_model=dict)
 async def health_check():
     from src.database import _get_client, get_collection_name
@@ -23,7 +21,6 @@ async def health_check():
         pass
     return {"status": "ok" if qdrant_status == "connected" else "degraded", "qdrant": qdrant_status}
 
-# Include API routes (router already has /api prefix)
 from src.routes import router
 app.include_router(router)
 
@@ -36,6 +33,7 @@ async def root():
     }
 
 if __name__ == "__main__":
+    import uvicorn  # only needed for local `python src/main.py` runs
     uvicorn.run(
         "src.main:app",
         host=settings.HOST,
