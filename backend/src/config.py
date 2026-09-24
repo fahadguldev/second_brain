@@ -24,9 +24,9 @@ class Settings:
         if key
     ]
     # Model names from Google AI Studio
-    # - Embedding model: models/gemini-embedding-001 produces 3072-dim vectors (matches knowledge_base)
+    # - Embedding model: models/gemini-embedding-2 produces 3072-dim vectors (matches knowledge_base)
     # - Generation model: gemini-3.1-lite
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-2")
     GENERATION_MODEL: str = os.getenv("GENERATION_MODEL", "gemini-3.1-flash-lite")
 
     # Rate limiting
