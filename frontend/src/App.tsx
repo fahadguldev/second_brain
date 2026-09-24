@@ -31,10 +31,10 @@ export function useChat(): UseChatReturn {
     }
     setMessages(prev => [...prev, userMessage])
     setInputValue('')
-    setMessages(prev => [...prev, { id: 'typing', text: 'Fahad is thinking...', type: 'system' }])
+    setMessages(prev => [...prev, { id: 'typing', text: 'typing', type: 'system' }])
 
     try {
-      const response = await fetch('/api/ask', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -209,7 +209,7 @@ export default function App() {
             {isThinking && (
               <div className="flex justify-start">
                 <div className="rounded-[8px] border border-ink/10 bg-paper px-5 py-3 text-sm font-semibold text-slate shadow-insetline">
-                  Fahad is thinking...
+                  typing...
                 </div>
               </div>
             )}
