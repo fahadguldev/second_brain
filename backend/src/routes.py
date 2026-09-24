@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from src.rag import generate_answer, retrieve
-from src.database import ensure_collection, search_points, insert_points
+from src.database import ensure_collection, search_points, insert_points, _get_client
 from src.config import settings
 
 router = APIRouter(prefix="/api", tags=["second-brain"])
@@ -51,10 +51,10 @@ async def startup_event():
 @router.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """Health check endpoint."""
-    from src.database import client
+    from src.database import _get_client
     qdrant_status = "connected"
     try:
-        client.get_collection(collection_name=settings.QDRANT_COLLECTION)
+        _get_client().get_collection(collection_name=settings.QDRANT_COLLECTION)
     except Exception:
         qdrant_status = "error"
     
