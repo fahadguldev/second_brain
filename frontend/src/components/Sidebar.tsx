@@ -4,9 +4,12 @@ import {
   Note,
   Stack,
   Timer,
+  Plus,
+  ChatCircle,
 } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import { BrandBlock } from './BrandMark'
+import type { Conversation } from '../types'
 
 const streams = [
   { name: 'tiktok', desc: 'DMs & comments' },
@@ -18,9 +21,17 @@ const streams = [
 export function Sidebar({
   turnCount,
   onSuggest,
+  conversations,
+  activeConversationId,
+  onSelectConversation,
+  onNewConversation,
 }: {
   turnCount: number
   onSuggest: (text: string) => void
+  conversations: Conversation[]
+  activeConversationId: string | null
+  onSelectConversation: (id: string) => void
+  onNewConversation: () => void
 }) {
   const reduce = useReducedMotion()
 
@@ -43,6 +54,33 @@ export function Sidebar({
         Ask across notes, transcriptions, career advice, AWS lessons, and saved
         questions. Answers are grounded in your own archive.
       </p>
+
+      <button
+        onClick={onNewConversation}
+        className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2.5 text-sm font-semibold text-accent-ink"
+      >
+        <Plus size={16} weight="bold" /> New conversation
+      </button>
+
+      {conversations.length > 0 && (
+        <div className="mt-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">History</p>
+          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+            {conversations.map(conversation => (
+              <button
+                key={conversation.id}
+                onClick={() => onSelectConversation(conversation.id)}
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                  activeConversationId === conversation.id ? 'bg-accent/10 text-accent' : 'hover:bg-raised'
+                }`}
+              >
+                <ChatCircle size={14} className="shrink-0" />
+                <span className="truncate">{conversation.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-3 gap-2">
         {items.map(item => (

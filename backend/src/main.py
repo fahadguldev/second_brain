@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
+from src.chat_database import init_chat_database
 
 app = FastAPI(
     title="Second Brain AI API",
@@ -17,6 +18,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def initialize_database():
+    init_chat_database()
 
 @app.get("/health", response_model=dict)
 async def health_check():

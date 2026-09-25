@@ -106,6 +106,7 @@ def generate_answer(
     top_k: int = 5,
     filter_dict: Optional[Dict[str, Any]] = None,
     system_prompt: Optional[str] = None,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """Generate a grounded answer using RAG."""
 
@@ -147,11 +148,19 @@ Follow these rules:
 - Clearly distinguish between knowledge (facts), experience, opinion, and generic information
 - Ground answers in the retrieved records; when nothing relevant is found, say "no idea about it dear" - do not invent"""
 
+    history = "\n".join(
+        f"{item['role'].title()}: {item['content']}"
+        for item in (conversation_history or [])[-10:]
+    )
+
     # Build the full prompt
     full_prompt = f"""{system_prompt}
 
 Context from Fahad's knowledge base:
 {context if context else "No relevant context found."}
+
+Recent conversation:
+{history if history else "No earlier messages."}
 
 User question: {question}
 
