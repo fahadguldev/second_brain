@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.config import settings
 from src.chat_database import init_chat_database
+from src.database import ensure_collection
 
 app = FastAPI(
     title="Second Brain AI API",
@@ -23,17 +24,24 @@ app.add_middleware(
 def initialize_database():
     init_chat_database()
 
+@app.get("/health/live", response_model=dict)
+def liveness_check():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", response_model=dict)
+def readiness_check():
+    qdrant_ready = ensure_collection(settings.EMBEDDING_DIMENSION)
+    return {
+        "status": "ok" if qdrant_ready else "degraded",
+        "qdrant": "connected" if qdrant_ready else "error",
+        "gemini_configured": bool(settings.GEMINI_API_KEYS),
+    }
+
+
 @app.get("/health", response_model=dict)
-async def health_check():
-    from src.database import _get_client, get_collection_name
-    qdrant_status = "disconnected"
-    try:
-        client = _get_client()
-        if client:
-            qdrant_status = "connected"
-    except Exception:
-        pass
-    return {"status": "ok" if qdrant_status == "connected" else "degraded", "qdrant": qdrant_status}
+def health_check():
+    return readiness_check()
 
 from src.routes import router
 app.include_router(router)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AssistantInfo, ChatMessage, Conversation } from '../types'
+import type { AssistantInfo, ChatMessage, Conversation, StreamEvent } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 const request = (path: string, init?: RequestInit) => fetch(`${API_URL}${path}`, {
@@ -13,7 +13,7 @@ function makeId() {
     ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function normalizeMessage(item: any): ChatMessage {
+function normalizeMessage(item: Record<string, any>): ChatMessage {
   return {
     id: item.id,
     role: item.role,
@@ -38,7 +38,7 @@ export function useChat() {
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    if (el) el.scrollTop = el.scrollHeight
   }, [])
 
   const refreshConversations = useCallback(async () => {
@@ -78,32 +78,71 @@ export function useChat() {
     const trimmed = text.trim()
     if (!trimmed || isThinking) return
     const optimisticId = makeId()
-    setMessages(prev => [...prev, { id: optimisticId, role: 'user', text: trimmed }])
+    const assistantId = makeId()
+    setMessages(prev => [
+      ...prev,
+      { id: optimisticId, role: 'user', text: trimmed },
+      { id: assistantId, role: 'assistant', text: '', pending: true },
+    ])
     setIsThinking(true)
     try {
-      const res = await request('/api/ask', {
+      const res = await request('/api/ask/stream', {
         method: 'POST',
         body: JSON.stringify({ question: trimmed, conversation_id: activeConversationId }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Request failed')
-      const info: AssistantInfo = {
-        latency: data.latency, model: data.model,
-        embeddingModel: data.embedding_model, sources: data.sources || [],
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Request failed')
       }
-      setMessages(prev => [
-        ...prev.map(message => message.id === optimisticId
-          ? { ...message, id: data.user_message_id } : message),
-        { id: data.assistant_message_id, role: 'assistant', text: data.answer, info },
-      ])
-      setActiveConversationId(data.conversation_id)
-      await refreshConversations()
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let info: AssistantInfo = {}
+
+      const handleEvent = (event: StreamEvent) => {
+        if (event.type === 'metadata') {
+          info = {
+            latency: event.latency, model: event.model,
+            embeddingModel: event.embedding_model, sources: event.sources || [],
+          }
+          return
+        }
+        if (event.type === 'error') throw new Error(event.message)
+        if (event.type === 'done') {
+          setMessages(prev => prev.map(message => {
+            if (message.id === optimisticId) return { ...message, id: event.user_message_id }
+            if (message.id === assistantId) {
+              return { ...message, id: event.assistant_message_id, pending: false, info }
+            }
+            return message
+          }))
+          setActiveConversationId(event.conversation_id)
+          void refreshConversations()
+          return
+        }
+        setMessages(prev => prev.map(message => message.id === assistantId
+          ? { ...message, pending: false, text: message.text + event.text, info }
+          : message))
+      }
+
+      while (true) {
+        const { value, done } = await reader.read()
+        buffer += decoder.decode(value, { stream: !done })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.trim()) handleEvent(JSON.parse(line) as StreamEvent)
+        }
+        if (done) break
+      }
+      if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent)
     } catch (error) {
       console.error('API error:', error)
-      setMessages(prev => [...prev, {
-        id: makeId(), role: 'assistant', error: true,
-        text: 'Could not generate a response. Please try again.',
-      }])
+      setMessages(prev => prev.map(message => message.id === assistantId
+        ? { ...message, pending: false, error: true,
+            text: message.text || 'Could not generate a response. Please try again.' }
+        : message))
     } finally {
       setIsThinking(false)
     }
