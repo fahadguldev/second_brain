@@ -168,3 +168,61 @@ Answer:"""
         "model": settings.GENERATION_MODEL,
         "embedding_model": settings.EMBEDDING_MODEL,
     }
+
+
+def generate_answer_stream(
+    question: str,
+    top_k: int = 5,
+    filter_dict: Optional[Dict[str, Any]] = None,
+    system_prompt: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Prepare the RAG context and return a streaming answer iterator."""
+    if is_emoji_only(question):
+        return {
+            "stream": iter([emoji_reply(question)]),
+            "context": "",
+            "latency": 0.0,
+            "sources": [],
+            "model": settings.GENERATION_MODEL,
+            "embedding_model": settings.EMBEDDING_MODEL,
+        }
+
+    rag_result = retrieve(question, top_k=top_k, filter_dict=filter_dict)
+    context = rag_result["context"]
+
+    if system_prompt is None:
+        system_prompt = """You are Fahad's Second Brain. Answer the user's question based on the retrieved context below.
+
+Follow these rules:
+- Answer first, then give brief explanation if needed
+- Use short, direct sentences (1-2 sentences maximum)
+- Code-switch into romanized Urdu/Hindi function words when natural (qk, agr, ap, kr, hy, nai, skty, g, waghera, chahiye)
+- Use "dear" as natural address
+- Never fabricate personal experiences or opinions not in the context
+- If the context doesn't have the answer, reply ONLY with "no idea about it dear" - nothing else, no explanations
+- Do not mention "context", "retrieval", "records", or "knowledge base" in any answer - never explain your internal process to the user
+- Do not write formal Urdu/Hindi or Devanagari
+- Do not overuse "bhai"/"bro"
+- Keep lowercase "i"
+- Use loose punctuation
+- If relevant, you may reference your own content with: "very previous video is on this same question, plz watch that" or "for more details plz dm me"
+- Clearly distinguish between knowledge (facts), experience, opinion, and generic information
+- Ground answers in the retrieved records; when nothing relevant is found, say "no idea about it dear" - do not invent"""
+
+    full_prompt = f"""{system_prompt}
+
+Context from Fahad's knowledge base:
+{context if context else "No relevant context found."}
+
+User question: {question}
+
+Answer:"""
+
+    return {
+        "stream": llm.generate_stream(full_prompt),
+        "context": context,
+        "latency": rag_result["latency"],
+        "sources": rag_result["points"],
+        "model": settings.GENERATION_MODEL,
+        "embedding_model": settings.EMBEDDING_MODEL,
+    }

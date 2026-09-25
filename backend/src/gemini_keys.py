@@ -2,7 +2,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Callable, TypeVar
+from typing import Callable, Iterable, Iterator, TypeVar
 
 from google import genai as genai_lib
 
@@ -83,6 +83,28 @@ class GeminiKeyManager:
                 errors.append(str(exc))
                 with self._lock:
                     state.cooldown_until = time.time() + 60
+                print("Gemini API key failed; trying next key.")
+
+        raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")
+
+    def stream(self, operation: Callable[[genai_lib.Client], Iterable[T]]) -> Iterator[T]:
+        """Run a streaming operation, retrying only before any output is emitted."""
+        errors: list[str] = []
+
+        for _ in range(len(self._states)):
+            state, client = self._reserve_key()
+            emitted = False
+            try:
+                for chunk in operation(client):
+                    emitted = True
+                    yield chunk
+                return
+            except Exception as exc:
+                errors.append(str(exc))
+                with self._lock:
+                    state.cooldown_until = time.time() + 60
+                if emitted:
+                    raise
                 print("Gemini API key failed; trying next key.")
 
         raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")

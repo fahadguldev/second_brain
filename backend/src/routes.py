@@ -1,9 +1,10 @@
+import json
 import time
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from src.rag import generate_answer, retrieve
+from src.rag import generate_answer, generate_answer_stream, retrieve
 from src.database import ensure_collection, search_points, insert_points, _get_client
 from src.config import settings
 
@@ -86,4 +87,41 @@ async def ask_question(request: Request, req: AskRequest) -> AskResponse:
         model=result["model"],
         embedding_model=result["embedding_model"],
         context_used=result["context"],
+    )
+
+
+@router.post("/ask/stream")
+def ask_question_stream(req: AskRequest) -> StreamingResponse:
+    """Stream a RAG answer as newline-delimited JSON events."""
+    result = generate_answer_stream(
+        question=req.question,
+        top_k=req.top_k,
+        filter_dict=req.filter_dict,
+    )
+
+    def events():
+        metadata = {
+            "type": "metadata",
+            "sources": result["sources"],
+            "latency": result["latency"],
+            "top_k": req.top_k,
+            "model": result["model"],
+            "embedding_model": result["embedding_model"],
+        }
+        yield json.dumps(metadata) + "\n"
+
+        try:
+            for text in result["stream"]:
+                yield json.dumps({"type": "delta", "text": text}) + "\n"
+            yield json.dumps({"type": "done"}) + "\n"
+        except Exception:
+            yield json.dumps({"type": "error", "message": "Could not generate response."}) + "\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )

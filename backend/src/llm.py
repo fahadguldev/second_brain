@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import Optional
 from src.config import settings
 from src.gemini_keys import gemini_key_manager
@@ -26,6 +27,25 @@ class GeminiLLM:
         except Exception as e:
             print(f"LLM generation error: {e}")
             return f"Error: Could not generate response."
+
+    def generate_stream(
+        self,
+        prompt: str,
+        system_instructions: Optional[str] = None,
+    ) -> Iterator[str]:
+        """Yield generated text as Gemini returns it."""
+        full_prompt = prompt
+        if system_instructions:
+            full_prompt = f"{system_instructions}\n\nUser: {prompt}"
+
+        for chunk in gemini_key_manager.stream(
+            lambda client: client.models.generate_content_stream(
+                model=self.model,
+                contents=full_prompt,
+            )
+        ):
+            if chunk.text:
+                yield chunk.text
 
 
 # Global instance

@@ -16,7 +16,7 @@ export function useChat() {
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    if (el) el.scrollTop = el.scrollHeight
   }, [])
 
   useEffect(() => {
@@ -40,52 +40,82 @@ export function useChat() {
     if (!trimmed || isThinking) return
 
     const userMessage: ChatMessage = { id: makeId(), role: 'user', text: trimmed }
-    setMessages(prev => [...prev, userMessage])
+    const assistantId = makeId()
+    setMessages(prev => [
+      ...prev,
+      userMessage,
+      { id: assistantId, role: 'assistant', text: '', pending: true },
+    ])
     setIsThinking(true)
 
     try {
-      const res = await fetch(`${API_URL}/api/ask`, {
+      const res = await fetch(`${API_URL}/api/ask/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: trimmed }),
       })
 
-      const data = await res.json()
-      const answer: string = typeof data.answer === 'string' ? data.answer : ''
+      if (!res.ok || !res.body) throw new Error(`Streaming request failed: ${res.status}`)
 
-      const info: AssistantInfo = {
-        latency: typeof data.latency === 'number' ? data.latency : undefined,
-        model: typeof data.model === 'string' ? data.model : undefined,
-        embeddingModel:
-          typeof data.embedding_model === 'string' ? data.embedding_model : undefined,
-        sources: Array.isArray(data.sources) ? data.sources : [],
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let info: AssistantInfo = {}
+
+      const handleEvent = (line: string) => {
+        if (!line.trim()) return
+        const event = JSON.parse(line)
+
+        if (event.type === 'metadata') {
+          info = {
+            latency: typeof event.latency === 'number' ? event.latency : undefined,
+            model: typeof event.model === 'string' ? event.model : undefined,
+            embeddingModel:
+              typeof event.embedding_model === 'string' ? event.embedding_model : undefined,
+            sources: Array.isArray(event.sources) ? event.sources : [],
+          }
+          return
+        }
+
+        if (event.type === 'error') {
+          throw new Error(event.message || 'Streaming failed')
+        }
+
+        setMessages(prev => prev.map(message => {
+          if (message.id !== assistantId) return message
+          return {
+            ...message,
+            pending: false,
+            text: event.type === 'delta'
+              ? message.text + (typeof event.text === 'string' ? event.text : '')
+              : message.text,
+            info,
+          }
+        }))
       }
 
-      const isError = res.ok ? answer.trim().startsWith('Error:') : true
+      while (true) {
+        const { value, done } = await reader.read()
+        buffer += decoder.decode(value, { stream: !done })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        lines.forEach(handleEvent)
+        if (done) break
+      }
 
-      setMessages(prev => [
-        ...prev,
-        {
-          id: makeId(),
-          role: 'assistant',
-          text: isError
-            ? 'Something went wrong while generating a response. Please try again.'
-            : answer,
-          error: isError,
-          info,
-        },
-      ])
+      if (buffer.trim()) handleEvent(buffer)
     } catch (err) {
       console.error('API error:', err)
-      setMessages(prev => [
-        ...prev,
-        {
-          id: makeId(),
-          role: 'assistant',
-          text: 'Could not reach the knowledge backend. Please try again.',
-          error: true,
-        },
-      ])
+      setMessages(prev => prev.map(message => (
+        message.id === assistantId
+          ? {
+              ...message,
+              pending: false,
+              text: 'Could not generate a response. Please try again.',
+              error: true,
+            }
+          : message
+      )))
     } finally {
       setIsThinking(false)
     }
