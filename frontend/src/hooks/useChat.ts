@@ -23,6 +23,18 @@ export function useChat() {
     scrollToBottom()
   }, [messages, scrollToBottom])
 
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const observer = new MutationObserver(() => {
+      requestAnimationFrame(scrollToBottom)
+    })
+
+    observer.observe(el, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [scrollToBottom])
+
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || isThinking) return
