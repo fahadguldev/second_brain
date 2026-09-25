@@ -1,17 +1,20 @@
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.chat_database import Conversation, Message, User, get_db, utcnow
+from src.chat_database import Conversation, Message, SessionLocal, User, get_db, utcnow
 from src.chat_service import get_current_user, owned_conversation, serialize_message
 from src.config import settings
 from src.database import ensure_collection
-from src.rag import generate_answer
+from src.llm import GenerationError
+from src.rag import generate_answer, generate_answer_stream
 
 router = APIRouter(prefix="/api", tags=["second-brain"])
 
@@ -30,7 +33,6 @@ class AskResponse(BaseModel):
     top_k: int
     model: str
     embedding_model: str
-    context_used: str
     conversation_id: str
     user_message_id: str
     assistant_message_id: str
@@ -60,7 +62,7 @@ class HealthResponse(BaseModel):
 
 @router.on_event("startup")
 def startup_event():
-    ensure_collection(vector_size=3072)
+    ensure_collection(vector_size=settings.EMBEDDING_DIMENSION)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -128,10 +130,13 @@ def ask_question(
     conversation.updated_at = utcnow()
     db.commit()
 
-    result = generate_answer(
-        question=req.question, top_k=req.top_k, filter_dict=req.filter_dict,
-        conversation_history=previous_messages,
-    )
+    try:
+        result = generate_answer(
+            question=req.question, top_k=req.top_k, filter_dict=req.filter_dict,
+            conversation_history=previous_messages,
+        )
+    except GenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     assistant_message = Message(
         id=str(uuid4()), conversation_id=conversation.id, role="assistant",
         content=result["answer"], model=result["model"], embedding_model=result["embedding_model"],
@@ -144,6 +149,84 @@ def ask_question(
     return AskResponse(
         answer=result["answer"], sources=result["sources"], latency=result["latency"],
         top_k=req.top_k, model=result["model"], embedding_model=result["embedding_model"],
-        context_used=result["context"], conversation_id=conversation.id,
+        conversation_id=conversation.id,
         user_message_id=user_message.id, assistant_message_id=assistant_message.id,
+    )
+
+
+@router.post("/ask/stream")
+def ask_question_stream(
+    req: AskRequest,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> StreamingResponse:
+    if req.conversation_id:
+        conversation = owned_conversation(db, req.conversation_id, user.id)
+    else:
+        conversation = Conversation(id=str(uuid4()), user_id=user.id)
+        db.add(conversation)
+
+    previous_messages = [
+        {"role": message.role, "content": message.content}
+        for message in conversation.messages[-10:]
+    ]
+    user_message = Message(
+        id=str(uuid4()), conversation=conversation, role="user", content=req.question,
+    )
+    db.add(user_message)
+    if not previous_messages:
+        conversation.title = req.question.strip()[:80]
+    conversation.updated_at = utcnow()
+    db.commit()
+
+    try:
+        result = generate_answer_stream(
+            question=req.question, top_k=req.top_k, filter_dict=req.filter_dict,
+            conversation_history=previous_messages,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not prepare response") from exc
+
+    conversation_id = conversation.id
+    user_message_id = user_message.id
+
+    def events():
+        yield json.dumps({
+            "type": "metadata", "sources": result["sources"],
+            "latency": result["latency"], "model": result["model"],
+            "embedding_model": result["embedding_model"],
+        }) + "\n"
+        answer_parts: list[str] = []
+        stream_db = SessionLocal()
+        try:
+            for text in result["stream"]:
+                answer_parts.append(text)
+                yield json.dumps({"type": "delta", "text": text}) + "\n"
+
+            assistant_message = Message(
+                id=str(uuid4()), conversation_id=conversation_id, role="assistant",
+                content="".join(answer_parts), model=result["model"],
+                embedding_model=result["embedding_model"], latency=result["latency"],
+                sources=result["sources"],
+            )
+            stream_conversation = stream_db.get(Conversation, conversation_id)
+            stream_db.add(assistant_message)
+            if stream_conversation:
+                stream_conversation.updated_at = utcnow()
+            stream_db.commit()
+            yield json.dumps({
+                "type": "done", "conversation_id": conversation_id,
+                "user_message_id": user_message_id,
+                "assistant_message_id": assistant_message.id,
+            }) + "\n"
+        except Exception:
+            stream_db.rollback()
+            yield json.dumps({
+                "type": "error", "message": "Response generation was interrupted.",
+            }) + "\n"
+        finally:
+            stream_db.close()
+
+    return StreamingResponse(
+        events(), media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
