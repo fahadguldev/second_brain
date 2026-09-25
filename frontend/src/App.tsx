@@ -33,9 +33,9 @@ function ChatApp() {
   }
 
   return (
-    <div className="bg-bg text-ink">
+    <div className="h-[100dvh] overflow-hidden bg-bg text-ink">
       {/* Desktop grid */}
-      <div className="mx-auto grid max-h-[100dvh] min-h-[100dvh] w-full max-w-[1440px] grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden">
+      <div className="mx-auto grid h-full w-full max-w-[1440px] grid-cols-1 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
         <div className="hidden lg:flex lg:flex-col lg:overflow-y-auto">
           <Sidebar
             turnCount={turns} onSuggest={handlePick}
@@ -44,7 +44,7 @@ function ChatApp() {
           />
         </div>
 
-        <main className="flex min-h-0 flex-col">
+        <main className="flex h-full min-h-0 flex-col overflow-hidden">
           <Header isThinking={isThinking} theme={theme} onToggleTheme={toggle} />
 
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
