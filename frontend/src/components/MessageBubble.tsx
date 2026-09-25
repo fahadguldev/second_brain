@@ -1,11 +1,15 @@
-import { useState } from 'react'
-import { CaretDown, FileText, Lightbulb, WarningCircle } from '@phosphor-icons/react'
+import { useEffect, useMemo, useState } from 'react'
+import { CaretDown, FileText, Lightbulb, Play, WarningCircle } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, SourceItem } from '../types'
 import { ThinkingDots } from './ThinkingDots'
 
-function sourceLabel(item: { metadata?: { source?: { type?: string } } }): string {
-  const type = item.metadata?.source?.type
+function sourceMetadata(item: SourceItem) {
+  return item.payload?.metadata ?? item.metadata
+}
+
+function sourceLabel(item: SourceItem): string {
+  const type = sourceMetadata(item)?.source?.type
   if (!type) return 'record'
   const short = type.replace(/_/g, ' ')
   return short.length > 24 ? short.slice(0, 24) + '…' : short
@@ -14,6 +18,93 @@ function sourceLabel(item: { metadata?: { source?: { type?: string } } }): strin
 function scorePct(score?: number): string {
   if (typeof score !== 'number') return '—'
   return `${Math.round(score * 100)}%`
+}
+
+interface VideoPreview {
+  url: string
+  title: string
+  thumbnail: string
+}
+
+function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
+  const videoUrls = useMemo(
+    () => Array.from(new Set(
+      sources
+        .map(source => sourceMetadata(source)?.source?.url)
+        .filter((url): url is string => Boolean(url)),
+    )),
+    [sources],
+  )
+  const [videos, setVideos] = useState<VideoPreview[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    Promise.all(
+      videoUrls.slice(0, 3).map(async url => {
+        if (!url.includes('tiktok.com/')) return null
+        try {
+          const response = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`)
+          if (!response.ok) return null
+          const data = await response.json()
+          if (!data.thumbnail_url) return null
+          return {
+            url,
+            title: data.title || 'Watch the related video',
+            thumbnail: data.thumbnail_url,
+          } satisfies VideoPreview
+        } catch {
+          return null
+        }
+      }),
+    ).then(results => {
+      if (!cancelled) {
+        setVideos(results.filter((video): video is VideoPreview => video !== null))
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [videoUrls])
+
+  if (videos.length === 0) return null
+
+  return (
+    <section className="mt-4 border-t border-line/60 pt-3">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+        For more details you can watch this video
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {videos.map(video => (
+          <a
+            key={video.url}
+            href={video.url}
+            target="_blank"
+            rel="noreferrer"
+            className="group overflow-hidden rounded-lg border border-line bg-raised/50 transition-colors hover:border-accent/50"
+          >
+            <div className="relative aspect-video max-h-40 overflow-hidden bg-raised">
+              <img
+                src={video.thumbnail}
+                alt="Related video thumbnail"
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+              <span className="absolute inset-0 grid place-items-center bg-black/10 transition-colors group-hover:bg-black/20">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-black/70 text-white shadow-lg">
+                  <Play size={18} weight="fill" />
+                </span>
+              </span>
+            </div>
+            <p className="line-clamp-2 px-3 py-2 text-xs font-medium leading-relaxed">
+              {video.title}
+            </p>
+          </a>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 function SourceList({ sources }: { sources: NonNullable<ChatMessage['info']>['sources'] }) {
@@ -119,7 +210,10 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
         {!isUser && !msg.error && (
           <>
             {msg.info?.sources && msg.info.sources.length > 0 && (
-              <SourceList sources={msg.info.sources} />
+              <>
+                <VideoRecommendations sources={msg.info.sources} />
+                <SourceList sources={msg.info.sources} />
+              </>
             )}
             {msg.info && <MetaRow info={msg.info} />}
           </>

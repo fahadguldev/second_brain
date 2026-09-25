@@ -2,14 +2,22 @@ export interface SourceItem {
   id?: number
   score?: number
   text?: string
-  metadata?: {
-    domain?: string
-    topics?: string[]
-    language?: string
-    source?: {
-      type?: string
-      file?: string
-    }
+  payload?: {
+    text?: string
+    metadata?: SourceMetadata
+  }
+  metadata?: SourceMetadata
+}
+
+export interface SourceMetadata {
+  domain?: string
+  topics?: string[]
+  language?: string
+  source?: {
+    type?: string
+    file?: string
+    url?: string
+    video_id?: string
   }
 }
 
