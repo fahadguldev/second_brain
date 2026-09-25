@@ -8,7 +8,10 @@ import { EmptyState } from './components/EmptyState'
 import { MessageBubble } from './components/MessageBubble'
 
 export default function App() {
-  const { messages, isThinking, sendMessage, scrollRef, clear } = useChat()
+  const {
+    messages, conversations, activeConversationId, isThinking, isLoading,
+    sendMessage, selectConversation, newConversation, scrollRef,
+  } = useChat()
   const { theme, toggle } = useTheme()
 
   const turns = messages.filter(m => m.role === 'user').length
@@ -33,14 +36,20 @@ export default function App() {
       {/* Desktop grid */}
       <div className="mx-auto grid max-h-[100dvh] min-h-[100dvh] w-full max-w-[1440px] grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden">
         <div className="hidden lg:flex lg:flex-col lg:overflow-y-auto">
-          <Sidebar turnCount={turns} onSuggest={handlePick} />
+          <Sidebar
+            turnCount={turns} onSuggest={handlePick}
+            conversations={conversations} activeConversationId={activeConversationId}
+            onSelectConversation={selectConversation} onNewConversation={newConversation}
+          />
         </div>
 
         <main className="flex min-h-0 flex-col">
           <Header isThinking={isThinking} theme={theme} onToggleTheme={toggle} />
 
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-            {messages.length === 0 ? (
+            {isLoading ? (
+              <div className="grid h-full place-items-center text-sm text-muted">Loading history...</div>
+            ) : messages.length === 0 ? (
               <EmptyState onPick={handlePick} />
             ) : (
               <>
@@ -51,10 +60,10 @@ export default function App() {
                 {turns > 0 && (
                   <div className="mx-auto mt-8 flex max-w-3xl justify-center">
                     <button
-                      onClick={clear}
+                      onClick={newConversation}
                       className="rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent/40 hover:text-accent"
                     >
-                      Clear conversation
+                      New conversation
                     </button>
                   </div>
                 )}

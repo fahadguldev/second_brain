@@ -4,6 +4,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./second_brain.db")
+    SESSION_SECRET: str = os.getenv("SESSION_SECRET", "change-me-in-production")
+    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
+    COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax")
+    COOKIE_DOMAIN: str | None = os.getenv("COOKIE_DOMAIN") or None
+
     # Qdrant
     QDRANT_URL: str = os.getenv("QDRANT_URL", "")
     QDRANT_API_KEY: str = os.getenv("QDRANT_API_KEY", "")
