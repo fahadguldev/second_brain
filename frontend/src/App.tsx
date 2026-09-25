@@ -6,8 +6,9 @@ import { Header } from './components/Header'
 import { Composer } from './components/Composer'
 import { EmptyState } from './components/EmptyState'
 import { MessageBubble } from './components/MessageBubble'
+import { AdminApp } from './components/AdminApp'
 
-export default function App() {
+function ChatApp() {
   const {
     messages, conversations, activeConversationId, isThinking, isLoading,
     sendMessage, selectConversation, newConversation, scrollRef,
@@ -76,4 +77,8 @@ export default function App() {
       </div>
     </div>
   )
+}
+
+export default function App() {
+  return window.location.pathname.startsWith('/admin') ? <AdminApp /> : <ChatApp />
 }

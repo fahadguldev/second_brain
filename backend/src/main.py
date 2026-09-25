@@ -37,6 +37,8 @@ async def health_check():
 
 from src.routes import router
 app.include_router(router)
+from src.admin_routes import router as admin_router
+app.include_router(admin_router)
 
 @app.get("/")
 async def root():
