@@ -22,11 +22,6 @@ class KeyState:
 class GeminiKeyManager:
     def __init__(self) -> None:
         unique_keys = list(dict.fromkeys(settings.GEMINI_API_KEYS))
-        if not unique_keys:
-            raise ValueError(
-                "No Gemini API key configured. Set GEMINI_API_KEY or GEMINI_API_KEY_1..5."
-            )
-
         self._states = [KeyState(api_key=key) for key in unique_keys]
         self._clients: dict[str, genai_lib.Client] = {}
         self._lock = Lock()
@@ -73,6 +68,10 @@ class GeminiKeyManager:
         raise RuntimeError("All Gemini API keys are rate limited or cooling down.")
 
     def run(self, operation: Callable[[genai_lib.Client], T]) -> T:
+        if not self._states:
+            raise RuntimeError(
+                "Gemini is not configured. Set GEMINI_API_KEY or GEMINI_API_KEY_1..5."
+            )
         errors: list[str] = []
 
         for _ in range(len(self._states)):
