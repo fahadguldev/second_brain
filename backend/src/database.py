@@ -60,6 +60,25 @@ def insert_points(points: list) -> bool:
     if client is None:
         return False
 
+
+def delete_points(point_ids: list[str]) -> bool:
+    """Delete known derived points after a replacement has been indexed."""
+    if not point_ids:
+        return True
+    client = _get_client()
+    if client is None:
+        return False
+    try:
+        from qdrant_client.models import PointIdsList
+        client.delete(
+            collection_name=get_collection_name(),
+            points_selector=PointIdsList(points=point_ids),
+        )
+        return True
+    except Exception as e:
+        print(f"Error deleting points: {e}")
+        return False
+
     try:
         client.upsert(
             collection_name=get_collection_name(),

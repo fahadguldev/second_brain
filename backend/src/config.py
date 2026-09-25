@@ -9,6 +9,11 @@ class Settings:
     COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
     COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax")
     COOKIE_DOMAIN: str | None = os.getenv("COOKIE_DOMAIN") or None
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "").rstrip("/")
+    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    ADMIN_EMAILS: set[str] = {
+        email.strip().lower() for email in os.getenv("ADMIN_EMAILS", "").split(",") if email.strip()
+    }
 
     # Qdrant
     QDRANT_URL: str = os.getenv("QDRANT_URL", "")

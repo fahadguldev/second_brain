@@ -21,7 +21,7 @@ def embed(text: str) -> List[float]:
         return result.embeddings[0].values
     except Exception as e:
         print(f"Embedding error: {e}")
-        return [0.0] * 768
+        raise RuntimeError("Embedding generation failed") from e
 
 
 def embed_batch(texts: List[str]) -> List[List[float]]:
