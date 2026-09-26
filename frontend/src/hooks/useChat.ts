@@ -1,97 +1,193 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AssistantInfo, ChatMessage } from '../types'
+import type { AssistantInfo, ChatMessage, Conversation, StreamEvent } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const VISITOR_KEY = 'second_brain_visitor_id'
+
+function getStoredVisitorId(): string | null {
+  try {
+    return localStorage.getItem(VISITOR_KEY)
+  } catch {
+    return null
+  }
+}
+
+function setStoredVisitorId(id: string | null) {
+  if (!id) return
+  try {
+    localStorage.setItem(VISITOR_KEY, id)
+  } catch {
+    // ignore storage restrictions
+  }
+}
+
+const request = async (path: string, init?: RequestInit): Promise<Response> => {
+  const visitorId = getStoredVisitorId()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(visitorId ? { 'X-Visitor-Id': visitorId } : {}),
+    ...(init?.headers as Record<string, string> || {}),
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+    headers,
+  })
+
+  const newVisitorId = res.headers.get('x-visitor-id')
+  if (newVisitorId) {
+    setStoredVisitorId(newVisitorId)
+  }
+
+  return res
+}
 
 function makeId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function normalizeMessage(item: Record<string, any>): ChatMessage {
+  return {
+    id: item.id,
+    role: item.role,
+    text: item.text,
+    createdAt: item.created_at,
+    info: item.info ? {
+      latency: item.info.latency,
+      model: item.info.model,
+      embeddingModel: item.info.embedding_model,
+      sources: item.info.sources || [],
+    } : undefined,
+  }
 }
 
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isThinking, setIsThinking] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    if (el) el.scrollTop = el.scrollHeight
+  }, [])
+
+  const refreshConversations = useCallback(async () => {
+    const res = await request('/api/conversations')
+    if (!res.ok) throw new Error('Could not load conversations')
+    const items: Conversation[] = await res.json()
+    setConversations(items)
+    return items
+  }, [])
+
+  const selectConversation = useCallback(async (id: string) => {
+    setIsLoading(true)
+    try {
+      const res = await request(`/api/conversations/${id}/messages`)
+      if (!res.ok) throw new Error('Could not load messages')
+      setMessages((await res.json()).map(normalizeMessage))
+      setActiveConversationId(id)
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, scrollToBottom])
+    refreshConversations()
+      .then(items => items[0] ? selectConversation(items[0].id) : setIsLoading(false))
+      .catch(() => setIsLoading(false))
+  }, [refreshConversations, selectConversation])
 
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
+  useEffect(scrollToBottom, [messages, scrollToBottom])
 
-    const observer = new MutationObserver(() => {
-      requestAnimationFrame(scrollToBottom)
-    })
-
-    observer.observe(el, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [scrollToBottom])
+  const newConversation = useCallback(() => {
+    setActiveConversationId(null)
+    setMessages([])
+  }, [])
 
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || isThinking) return
-
-    const userMessage: ChatMessage = { id: makeId(), role: 'user', text: trimmed }
-    setMessages(prev => [...prev, userMessage])
+    const optimisticId = makeId()
+    const assistantId = makeId()
+    setMessages(prev => [
+      ...prev,
+      { id: optimisticId, role: 'user', text: trimmed },
+      { id: assistantId, role: 'assistant', text: '', pending: true },
+    ])
     setIsThinking(true)
-
     try {
-      const res = await fetch(`${API_URL}/api/ask`, {
+      const res = await request('/api/ask/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: trimmed }),
+        body: JSON.stringify({ question: trimmed, conversation_id: activeConversationId }),
       })
-
-      const data = await res.json()
-      const answer: string = typeof data.answer === 'string' ? data.answer : ''
-
-      const info: AssistantInfo = {
-        latency: typeof data.latency === 'number' ? data.latency : undefined,
-        model: typeof data.model === 'string' ? data.model : undefined,
-        embeddingModel:
-          typeof data.embedding_model === 'string' ? data.embedding_model : undefined,
-        sources: Array.isArray(data.sources) ? data.sources : [],
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 404 && activeConversationId) {
+          setActiveConversationId(null)
+        }
+        throw new Error(data.detail || 'Request failed')
       }
 
-      const isError = res.ok ? answer.trim().startsWith('Error:') : true
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let info: AssistantInfo = {}
 
-      setMessages(prev => [
-        ...prev,
-        {
-          id: makeId(),
-          role: 'assistant',
-          text: isError
-            ? 'Something went wrong while generating a response. Please try again.'
-            : answer,
-          error: isError,
-          info,
-        },
-      ])
-    } catch (err) {
-      console.error('API error:', err)
-      setMessages(prev => [
-        ...prev,
-        {
-          id: makeId(),
-          role: 'assistant',
-          text: 'Could not reach the knowledge backend. Please try again.',
-          error: true,
-        },
-      ])
+      const handleEvent = (event: StreamEvent) => {
+        if (event.type === 'metadata') {
+          info = {
+            latency: event.latency, model: event.model,
+            embeddingModel: event.embedding_model, sources: event.sources || [],
+          }
+          return
+        }
+        if (event.type === 'error') throw new Error(event.message)
+        if (event.type === 'done') {
+          setMessages(prev => prev.map(message => {
+            if (message.id === optimisticId) return { ...message, id: event.user_message_id }
+            if (message.id === assistantId) {
+              return { ...message, id: event.assistant_message_id, pending: false, info }
+            }
+            return message
+          }))
+          setActiveConversationId(event.conversation_id)
+          void refreshConversations()
+          return
+        }
+        setMessages(prev => prev.map(message => message.id === assistantId
+          ? { ...message, pending: false, text: message.text + event.text, info }
+          : message))
+      }
+
+      while (true) {
+        const { value, done } = await reader.read()
+        buffer += decoder.decode(value, { stream: !done })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (line.trim()) handleEvent(JSON.parse(line) as StreamEvent)
+        }
+        if (done) break
+      }
+      if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent)
+    } catch (error) {
+      console.error('API error:', error)
+      setMessages(prev => prev.map(message => message.id === assistantId
+        ? { ...message, pending: false, error: true,
+            text: message.text || 'Could not generate a response. Please try again.' }
+        : message))
     } finally {
       setIsThinking(false)
     }
-  }, [isThinking])
+  }, [activeConversationId, isThinking, refreshConversations])
 
-  const clear = useCallback(() => setMessages([]), [])
-
-  return { messages, isThinking, sendMessage, scrollRef, clear }
+  return {
+    messages, conversations, activeConversationId, isThinking, isLoading,
+    sendMessage, selectConversation, newConversation, scrollRef,
+  }
 }

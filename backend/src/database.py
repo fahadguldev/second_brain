@@ -29,12 +29,18 @@ def get_collection_name() -> str:
 
 
 def ensure_collection(vector_size: int = 3072) -> bool:
-    """Check that the Qdrant collection exists."""
+    """Check that the Qdrant collection exists and has the expected dimensions."""
     try:
         client = get_client()
-        client.get_collection(
+        info = client.get_collection(
             collection_name=get_collection_name()
         )
+        vectors = info.config.params.vectors
+        actual_size = getattr(vectors, "size", None)
+        if actual_size != vector_size:
+            raise RuntimeError(
+                f"Qdrant vector size is {actual_size}; expected {vector_size}"
+            )
         return True
 
     except Exception as e:
@@ -64,13 +70,31 @@ def insert_points(points: list) -> bool:
         client.upsert(
             collection_name=get_collection_name(),
             points=points,
+            wait=True,
         )
         return True
-
     except Exception as e:
         print(f"Error inserting points: {e}")
         return False
 
+
+def delete_points(point_ids: list[str]) -> bool:
+    """Delete known derived points after a replacement has been indexed."""
+    if not point_ids:
+        return True
+    client = _get_client()
+    if client is None:
+        return False
+    try:
+        from qdrant_client.models import PointIdsList
+        client.delete(
+            collection_name=get_collection_name(),
+            points_selector=PointIdsList(points=point_ids),
+        )
+        return True
+    except Exception as e:
+        print(f"Error deleting points: {e}")
+        return False
 
 def search_points(
     query_vector: list[float],
@@ -108,6 +132,7 @@ def search_points(
             limit=top_k,
             query_filter=query_filter,
             with_payload=True,
+            score_threshold=settings.RAG_SCORE_THRESHOLD,
         )
 
         return [

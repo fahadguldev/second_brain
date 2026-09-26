@@ -2,7 +2,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Callable, TypeVar
+from typing import Callable, Iterable, Iterator, TypeVar
 
 from google import genai as genai_lib
 
@@ -22,11 +22,6 @@ class KeyState:
 class GeminiKeyManager:
     def __init__(self) -> None:
         unique_keys = list(dict.fromkeys(settings.GEMINI_API_KEYS))
-        if not unique_keys:
-            raise ValueError(
-                "No Gemini API key configured. Set GEMINI_API_KEY or GEMINI_API_KEY_1..5."
-            )
-
         self._states = [KeyState(api_key=key) for key in unique_keys]
         self._clients: dict[str, genai_lib.Client] = {}
         self._lock = Lock()
@@ -73,6 +68,10 @@ class GeminiKeyManager:
         raise RuntimeError("All Gemini API keys are rate limited or cooling down.")
 
     def run(self, operation: Callable[[genai_lib.Client], T]) -> T:
+        if not self._states:
+            raise RuntimeError(
+                "Gemini is not configured. Set GEMINI_API_KEY or GEMINI_API_KEY_1..5."
+            )
         errors: list[str] = []
 
         for _ in range(len(self._states)):
@@ -83,8 +82,32 @@ class GeminiKeyManager:
                 errors.append(str(exc))
                 with self._lock:
                     state.cooldown_until = time.time() + 60
-                print("Gemini API key failed; trying next key.")
+                print(f"Gemini API key failed ({exc}); trying next key.")
 
+        raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")
+
+    def stream(self, operation: Callable[[genai_lib.Client], Iterable[T]]) -> Iterator[T]:
+        """Retry a stream only when no output has reached the caller."""
+        if not self._states:
+            raise RuntimeError(
+                "Gemini is not configured. Set GEMINI_API_KEY or GEMINI_API_KEY_1..5."
+            )
+        errors: list[str] = []
+        for _ in range(len(self._states)):
+            state, client = self._reserve_key()
+            emitted = False
+            try:
+                for chunk in operation(client):
+                    emitted = True
+                    yield chunk
+                return
+            except Exception as exc:
+                errors.append(str(exc))
+                with self._lock:
+                    state.cooldown_until = time.time() + 60
+                if emitted:
+                    raise
+                print(f"Gemini API key failed ({exc}); trying next key.")
         raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")
 
 

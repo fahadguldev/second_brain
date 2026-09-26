@@ -9,7 +9,7 @@ _embedding_model = settings.EMBEDDING_MODEL
 def embed(text: str) -> List[float]:
     """Generate embedding for a single text string."""
     if not text or not text.strip():
-        return [0.0] * 768
+        raise ValueError("Cannot embed empty text")
     
     try:
         result = gemini_key_manager.run(
@@ -18,10 +18,15 @@ def embed(text: str) -> List[float]:
                 contents=text,
             )
         )
-        return result.embeddings[0].values
+        vector = result.embeddings[0].values
+        if len(vector) != settings.EMBEDDING_DIMENSION:
+            raise RuntimeError(
+                f"Embedding dimension is {len(vector)}; expected {settings.EMBEDDING_DIMENSION}"
+            )
+        return vector
     except Exception as e:
         print(f"Embedding error: {e}")
-        return [0.0] * 768
+        raise RuntimeError("Embedding generation failed") from e
 
 
 def embed_batch(texts: List[str]) -> List[List[float]]:
