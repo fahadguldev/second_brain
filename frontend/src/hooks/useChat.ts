@@ -2,11 +2,46 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AssistantInfo, ChatMessage, Conversation, StreamEvent } from '../types'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-const request = (path: string, init?: RequestInit) => fetch(`${API_URL}${path}`, {
-  ...init,
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json', ...init?.headers },
-})
+const VISITOR_KEY = 'second_brain_visitor_id'
+
+function getStoredVisitorId(): string | null {
+  try {
+    return localStorage.getItem(VISITOR_KEY)
+  } catch {
+    return null
+  }
+}
+
+function setStoredVisitorId(id: string | null) {
+  if (!id) return
+  try {
+    localStorage.setItem(VISITOR_KEY, id)
+  } catch {
+    // ignore storage restrictions
+  }
+}
+
+const request = async (path: string, init?: RequestInit): Promise<Response> => {
+  const visitorId = getStoredVisitorId()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(visitorId ? { 'X-Visitor-Id': visitorId } : {}),
+    ...(init?.headers as Record<string, string> || {}),
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+    headers,
+  })
+
+  const newVisitorId = res.headers.get('x-visitor-id')
+  if (newVisitorId) {
+    setStoredVisitorId(newVisitorId)
+  }
+
+  return res
+}
 
 function makeId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -92,6 +127,9 @@ export function useChat() {
       })
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}))
+        if (res.status === 404 && activeConversationId) {
+          setActiveConversationId(null)
+        }
         throw new Error(data.detail || 'Request failed')
       }
 
