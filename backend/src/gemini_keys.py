@@ -82,7 +82,7 @@ class GeminiKeyManager:
                 errors.append(str(exc))
                 with self._lock:
                     state.cooldown_until = time.time() + 60
-                print("Gemini API key failed; trying next key.")
+                print(f"Gemini API key failed ({exc}); trying next key.")
 
         raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")
 
@@ -107,7 +107,7 @@ class GeminiKeyManager:
                     state.cooldown_until = time.time() + 60
                 if emitted:
                     raise
-                print("Gemini API key failed; trying next key.")
+                print(f"Gemini API key failed ({exc}); trying next key.")
         raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")
 
 
