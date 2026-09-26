@@ -6,7 +6,7 @@ load_dotenv()
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./second_brain.db")
     SESSION_SECRET: str = os.getenv("SESSION_SECRET", "change-me-in-production")
-    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
+    COOKIE_SECURE: bool = (os.getenv("COOKIE_SECURE") or os.getenv("COOKIES_SECURE", "False")).lower() == "true"
     COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax")
     COOKIE_DOMAIN: str | None = os.getenv("COOKIE_DOMAIN") or None
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -22,18 +22,11 @@ class Settings:
 
     # Gemini
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_API_KEYS: list[str] = [
-        key
-        for key in [
-            os.getenv("GEMINI_API_KEY", ""),
-            os.getenv("GEMINI_API_KEY_1", ""),
-            os.getenv("GEMINI_API_KEY_2", ""),
-            os.getenv("GEMINI_API_KEY_3", ""),
-            os.getenv("GEMINI_API_KEY_4", ""),
-            os.getenv("GEMINI_API_KEY_5", ""),
-        ]
-        if key
-    ]
+    GEMINI_API_KEYS: list[str] = list(dict.fromkeys(
+        val.strip()
+        for k, val in os.environ.items()
+        if k.startswith("GEMINI_API_KEY") and val.strip()
+    ))
     # Model names from Google AI Studio
     # - Embedding model: models/gemini-embedding-2 produces 3072-dim vectors (matches knowledge_base)
     # - Generation model: gemini-3.1-lite
@@ -51,7 +44,7 @@ class Settings:
         o.strip()
         for o in os.getenv(
             "CORS_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://second-brain-phi-opal.vercel.app",
+            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,https://second-brain-phi-opal.vercel.app",
         ).split(",")
         if o.strip()
     ]
