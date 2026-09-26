@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -157,6 +157,7 @@ def ask_question(
 @router.post("/ask/stream")
 def ask_question_stream(
     req: AskRequest,
+    response: Response,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> StreamingResponse:
     if req.conversation_id:
@@ -226,7 +227,14 @@ def ask_question_stream(
         finally:
             stream_db.close()
 
-    return StreamingResponse(
+    stream_response = StreamingResponse(
         events(), media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+    for k, v in response.headers.items():
+        if k.lower() not in ("content-type", "content-length"):
+            stream_response.headers[k] = v
+    for header_name, header_value in response.raw_headers:
+        if header_name.lower() == b"set-cookie":
+            stream_response.raw_headers.append((header_name, header_value))
+    return stream_response
