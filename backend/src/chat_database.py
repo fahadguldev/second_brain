@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Generator
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, create_engine
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from src.config import settings
@@ -86,8 +86,10 @@ class IngestionJob(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     knowledge_item_id: Mapped[str] = mapped_column(ForeignKey("knowledge_items.id"), index=True)
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    current_step: Mapped[str | None] = mapped_column(String(32), default="queued", nullable=True)
     chunks_total: Mapped[int] = mapped_column(default=0)
     chunks_indexed: Mapped[int] = mapped_column(default=0)
+    logs: Mapped[list] = mapped_column(JSON, default=list, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -106,6 +108,22 @@ class KnowledgeChunk(Base):
 
 def init_chat_database() -> None:
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        try:
+            if engine.dialect.name == "postgresql":
+                conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS current_step VARCHAR(32) DEFAULT 'queued'"))
+                conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS logs JSONB DEFAULT '[]'::jsonb"))
+                conn.commit()
+            elif engine.dialect.name == "sqlite":
+                res = conn.execute(text("PRAGMA table_info(ingestion_jobs)")).fetchall()
+                cols = [r[1] for r in res]
+                if "current_step" not in cols:
+                    conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN current_step VARCHAR(32) DEFAULT 'queued'"))
+                if "logs" not in cols:
+                    conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN logs JSON DEFAULT '[]'"))
+                conn.commit()
+        except Exception as exc:
+            print(f"Migration check notice: {exc}")
 
 
 def get_db() -> Generator[Session, None, None]:
