@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CaretDown, FileText, Lightbulb, Play, WarningCircle } from '@phosphor-icons/react'
+import { ArrowSquareOut, CaretDown, FileText, Lightbulb, Play, WarningCircle } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ChatMessage, SourceItem } from '../types'
 import { ThinkingDots } from './ThinkingDots'
@@ -23,7 +23,6 @@ function scorePct(score?: number): string {
 interface VideoPreview {
   url: string
   title: string
-  thumbnail: string
 }
 
 function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
@@ -40,21 +39,28 @@ function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
   useEffect(() => {
     let cancelled = false
 
+    // Initial state with a friendly default title while fetching oEmbed metadata
+    const initialVideos: VideoPreview[] = videoUrls.slice(0, 3).map(url => ({
+      url,
+      title: 'Watch related video on TikTok',
+    }))
+    setVideos(initialVideos)
+
     Promise.all(
       videoUrls.slice(0, 3).map(async url => {
-        if (!url.includes('tiktok.com/')) return null
+        if (!url.includes('tiktok.com/')) {
+          return { url, title: 'Watch related video' } satisfies VideoPreview
+        }
         try {
           const response = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`)
-          if (!response.ok) return null
+          if (!response.ok) return { url, title: 'Watch related video on TikTok' }
           const data = await response.json()
-          if (!data.thumbnail_url) return null
           return {
             url,
-            title: data.title || 'Watch the related video',
-            thumbnail: data.thumbnail_url,
+            title: data.title?.trim() || 'Watch related video on TikTok',
           } satisfies VideoPreview
         } catch {
-          return null
+          return { url, title: 'Watch related video on TikTok' } satisfies VideoPreview
         }
       }),
     ).then(results => {
@@ -71,35 +77,24 @@ function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
   if (videos.length === 0) return null
 
   return (
-    <section className="mt-4 border-t border-line/60 pt-3">
+    <section className="mt-3 border-t border-line/60 pt-2.5">
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-        For more details you can watch this video
+        Related video{videos.length > 1 ? 's' : ''}
       </p>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="flex flex-col gap-2">
         {videos.map(video => (
           <a
             key={video.url}
             href={video.url}
             target="_blank"
             rel="noreferrer"
-            className="group overflow-hidden rounded-lg border border-line bg-raised/50 transition-colors hover:border-accent/50"
+            className="group inline-flex items-center gap-2 rounded-lg border border-line/70 bg-raised/40 px-3 py-2 text-sm font-medium text-blue-600 transition-all hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
           >
-            <div className="relative aspect-video max-h-40 overflow-hidden bg-raised">
-              <img
-                src={video.thumbnail}
-                alt="Related video thumbnail"
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-              <span className="absolute inset-0 grid place-items-center bg-black/10 transition-colors group-hover:bg-black/20">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-black/70 text-white shadow-lg">
-                  <Play size={18} weight="fill" />
-                </span>
-              </span>
-            </div>
-            <p className="line-clamp-2 px-3 py-2 text-xs font-medium leading-relaxed">
-              {video.title}
-            </p>
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+              <Play size={11} weight="fill" />
+            </span>
+            <span className="line-clamp-1 flex-1">{video.title}</span>
+            <ArrowSquareOut size={14} className="shrink-0 text-muted opacity-60 transition-opacity group-hover:opacity-100" />
           </a>
         ))}
       </div>
