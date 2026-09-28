@@ -3,6 +3,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://second-brain-phi-opal.vercel.app",
+    "https://second-brain-backend-phi.vercel.app",
+)
+
+
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [
+        origin
+        for origin in (value.strip().rstrip("/").lower() for value in raw.split(","))
+        if origin and "://" in origin and "/" not in origin.partition("://")[2]
+    ]
+
+
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./second_brain.db")
     SESSION_SECRET: str = os.getenv("SESSION_SECRET", "change-me-in-production")
@@ -40,14 +62,9 @@ class Settings:
     RATE_LIMIT_PER_DAY: int = int(os.getenv("RATE_LIMIT_PER_DAY", "1000"))
 
     # CORS
-    CORS_ORIGINS: list[str] = [
-        o.strip()
-        for o in os.getenv(
-            "CORS_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://second-brain-phi-opal.vercel.app,https://second-brain-backend-phi.vercel.app/api/ask/stream",
-        ).split(",")
-        if o.strip()
-    ]
+    CORS_ORIGINS: list[str] = list(
+        dict.fromkeys(_parse_cors_origins(os.getenv("CORS_ORIGINS")) + list(_DEFAULT_CORS_ORIGINS))
+    )
 
     # App
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
