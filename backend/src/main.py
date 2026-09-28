@@ -23,7 +23,10 @@ app.add_middleware(
 
 @app.on_event("startup")
 def initialize_database():
-    init_chat_database()
+    try:
+        init_chat_database()
+    except Exception as e:
+        print(f"Could not initialize database on startup: {e}")
 
 @app.get("/health/live", response_model=dict)
 def liveness_check():
