@@ -44,7 +44,7 @@ class Settings:
         o.strip()
         for o in os.getenv(
             "CORS_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,https://second-brain-phi-opal.vercel.app",
+            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,https://second-brain-phi-opal.vercel.app,https://second-brain-backend-phi.vercel.app/api/ask/stream",
         ).split(",")
         if o.strip()
     ]
