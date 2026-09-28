@@ -36,7 +36,11 @@ def ensure_collection(vector_size: int = 3072) -> bool:
             collection_name=get_collection_name()
         )
         vectors = info.config.params.vectors
-        actual_size = getattr(vectors, "size", None)
+        if isinstance(vectors, dict):
+            first_param = next(iter(vectors.values()), None)
+            actual_size = getattr(first_param, "size", None) if first_param else None
+        else:
+            actual_size = getattr(vectors, "size", None)
         if actual_size != vector_size:
             raise RuntimeError(
                 f"Qdrant vector size is {actual_size}; expected {vector_size}"
@@ -46,6 +50,35 @@ def ensure_collection(vector_size: int = 3072) -> bool:
     except Exception as e:
         print(f"Could not connect to Qdrant collection: {e}")
         return False
+
+
+def get_collection_stats() -> dict:
+    """Get collection statistics including total vector count and metadata."""
+    client = _get_client()
+    if client is None:
+        return {"status": "error", "error": "Client not initialized", "points_count": 0}
+    try:
+        coll_name = get_collection_name()
+        info = client.get_collection(collection_name=coll_name)
+        count_res = client.count(collection_name=coll_name)
+        points_count = count_res.count if hasattr(count_res, "count") else (getattr(info, "points_count", 0) or 0)
+        indexed_vectors_count = getattr(info, "indexed_vectors_count", points_count)
+        vectors_param = getattr(info.config.params, "vectors", None)
+        if isinstance(vectors_param, dict):
+            first_param = next(iter(vectors_param.values()), None)
+            vector_size = getattr(first_param, "size", 3072) if first_param else 3072
+        else:
+            vector_size = getattr(vectors_param, "size", 3072)
+        return {
+            "status": "ok",
+            "collection": coll_name,
+            "points_count": points_count,
+            "indexed_vectors_count": indexed_vectors_count,
+            "vector_size": vector_size,
+        }
+    except Exception as e:
+        print(f"Error getting collection stats: {e}")
+        return {"status": "error", "error": str(e), "points_count": 0}
 
 
 def _get_client():
