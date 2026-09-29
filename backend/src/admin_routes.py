@@ -70,6 +70,17 @@ class BatchIngestRequest(BaseModel):
     item_ids: Optional[list[str]] = None
 
 
+class MessagePush(BaseModel):
+    source_message_id: str
+    question: Optional[str] = Field(default=None, max_length=10_000)
+    content: str = Field(min_length=1, max_length=500_000)
+
+
+class PushMessagesRequest(BaseModel):
+    messages: list[MessagePush] = Field(min_length=1, max_length=500)
+    source_type: str = Field(default="chat", max_length=32)
+
+
 class BatchIngestResponse(BaseModel):
     queued_count: int
     job_ids: list[str]
@@ -430,6 +441,92 @@ def batch_ingest_knowledge(
         job_ids=job_ids,
         message=f"Queued {len(job_ids)} item(s) for batch embedding and vector ingestion",
     )
+
+
+@router.post("/knowledge/push-messages", status_code=202)
+def push_messages(
+    payload: PushMessagesRequest,
+    tasks: BackgroundTasks,
+    admin: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Create or update knowledge items for the given chat messages, mark them
+    approved, and queue a single batched ingestion for all of them at once.
+    Used when the admin curates a whole conversation in the chat editor and
+    then pushes the entire chat to Qdrant.
+    """
+    seen_message_ids = set()
+    for entry in payload.messages:
+        if not db.get(Message, entry.source_message_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Source message {entry.source_message_id[:8]} not found",
+            )
+        if entry.source_message_id in seen_message_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate message {entry.source_message_id[:8]} in payload",
+            )
+        seen_message_ids.add(entry.source_message_id)
+
+    job_ids: list[str] = []
+
+    for entry in payload.messages:
+        item = db.scalar(select(KnowledgeItem).where(
+            KnowledgeItem.source_message_id == entry.source_message_id,
+        ))
+
+        if not item:
+            item = KnowledgeItem(
+                id=str(uuid4()),
+                source_type=payload.source_type,
+                source_message_id=entry.source_message_id,
+                question=entry.question,
+                content=entry.content.strip(),
+                created_by=admin.email,
+            )
+            db.add(item)
+        else:
+            item.question = entry.question
+            item.content = entry.content.strip()
+            item.updated_at = utcnow()
+
+        item.status = "approved"
+        item.approved_at = utcnow()
+
+        active = db.scalar(select(IngestionJob).where(
+            IngestionJob.knowledge_item_id == item.id,
+            IngestionJob.status.in_(["queued", "indexing"]),
+        ))
+        if active:
+            job_ids.append(active.id)
+            continue
+
+        job = IngestionJob(
+            id=str(uuid4()),
+            knowledge_item_id=item.id,
+            current_step="queued",
+            logs=[{
+                "timestamp": utcnow().strftime("%H:%M:%S"),
+                "step": "queued",
+                "level": "info",
+                "message": "Chat batch push queued",
+            }],
+        )
+        db.add(job)
+        job_ids.append(job.id)
+
+    db.commit()
+
+    if job_ids:
+        tasks.add_task(run_batch_ingestion_jobs, job_ids, 5)
+
+    return {
+        "queued_count": len(job_ids),
+        "job_ids": job_ids,
+        "message": f"Queued {len(job_ids)} chat message(s) for embedding and vector ingestion",
+    }
 
 
 @router.post("/uploads", response_model=KnowledgeResponse, status_code=201)
