@@ -17,6 +17,7 @@ import {
   EyeSlash,
   FileText,
   MagnifyingGlass,
+  PaperPlaneTilt,
   PencilSimple,
   Play,
   SignOut,
@@ -188,6 +189,7 @@ export function AdminApp() {
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [searchChat, setSearchChat] = useState('')
   const [hidePushedInChats, setHidePushedInChats] = useState(true)
   const [actionNotice, setActionNotice] = useState<string | null>(null)
@@ -197,11 +199,12 @@ export function AdminApp() {
 
   // Inline editing state for Chats tab
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
-  const [editQuestion, setEditQuestion] = useState('')
-  const [editContent, setEditContent] = useState('')
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, { question: string; content: string }>>({})
   const [isSavingInline, setIsSavingInline] = useState(false)
   const [singlePushTracker, setSinglePushTracker] = useState<SinglePushTracker | null>(null)
   const [pushingMessageId, setPushingMessageId] = useState<string | null>(null)
+  const [isPushingConversation, setIsPushingConversation] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement | null>(null)
 
   const pollIntervalRef = useRef<number | null>(null)
 
@@ -470,57 +473,112 @@ export function AdminApp() {
     return { conversationsToDisplay: list, fullyPushedConvCount: pushedConvCount }
   }, [conversations, hidePushedInChats, isAssistantPushed, searchChat])
 
-  // Count total pushed messages from chats
+  // Keep a valid conversation selected as the list changes
+  useEffect(() => {
+    if (conversationsToDisplay.length === 0) {
+      setSelectedConversationId(null)
+      return
+    }
+    if (selectedConversationId && conversationsToDisplay.some(c => c.id === selectedConversationId)) {
+      return
+    }
+    setSelectedConversationId(conversationsToDisplay[0].id)
+  }, [conversationsToDisplay, selectedConversationId])
+
+  const selectedConversation = useMemo(
+    () => conversationsToDisplay.find(c => c.id === selectedConversationId) || null,
+    [conversationsToDisplay, selectedConversationId]
+  )
+
   const totalPushedChatMsgs = pushedMessageIds.size
 
-  // Quick Action Handler for Inline Editing in Chats Tab
-  const handleInlineAction = async (
+  // Scroll the transcript to the latest message when the selection changes
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight })
+  }, [selectedConversationId])
+
+
+  // Resolve the editable draft for a message: unsaved edits win, then an existing
+  // knowledge item, then the raw chat text.
+  const draftFor = useCallback(
+    (conv: AdminConversation, message: AdminMessage) => {
+      const saved = messageDrafts[message.id]
+      if (saved) return saved
+
+      const item = knowledge.find(k => k.source_message_id === message.id)
+      const idx = conv.messages.findIndex(m => m.id === message.id)
+      let question = item?.question ?? ''
+      if (!question) {
+        for (let j = (idx >= 0 ? idx : conv.messages.length) - 1; j >= 0; j--) {
+          if (conv.messages[j].role === 'user') {
+            question = conv.messages[j].text
+            break
+          }
+        }
+      }
+      return { question, content: item?.content || message.text || '' }
+    },
+    [messageDrafts, knowledge]
+  )
+
+  const updateDraft = (messageId: string, patch: Partial<{ question: string; content: string }>) => {
+    setMessageDrafts(prev => ({
+      ...prev,
+      [messageId]: {
+        question: patch.question ?? prev[messageId]?.question ?? '',
+        content: patch.content ?? prev[messageId]?.content ?? '',
+      },
+    }))
+  }
+
+  const toggleMessageEdit = (conv: AdminConversation, message: AdminMessage) => {
+    if (editingMessageId === message.id) {
+      setEditingMessageId(null)
+      return
+    }
+    const draft = draftFor(conv, message)
+    setMessageDrafts(prev => ({ ...prev, [message.id]: draft }))
+    setEditingMessageId(message.id)
+  }
+
+  // Save an edited message: 'draft' stages it, 'approve' stages it as ready to push.
+  const saveMessageEdit = async (
+    conv: AdminConversation,
     message: AdminMessage,
-    action: 'draft' | 'approve' | 'push'
+    action: 'draft' | 'approve'
   ) => {
     setError('')
+    const draft = draftFor(conv, message)
+    const content = draft.content.trim()
+    if (!content) {
+      setError('Message content cannot be empty')
+      return
+    }
     setIsSavingInline(true)
     try {
-      const res = await api('/knowledge/quick-action', {
+      await api('/knowledge/quick-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: editQuestion.trim() || null,
-          content: editContent.trim(),
+          question: draft.question.trim() || null,
+          content,
           source_type: 'chat',
           source_message_id: message.id,
           action,
         }),
       })
-
       setEditingMessageId(null)
-
-      if (action === 'push') {
-        if (res.job) {
-          setSelectedJobId(res.job.id)
-          setSinglePushTracker({
-            jobId: res.job.id,
-            knowledgeItemId: res.item?.id,
-            messageId: editingMessageId || undefined,
-            title: (editQuestion.trim() || editContent.trim()).slice(0, 45) + '...',
-            step: res.job.current_step || 'queued',
-            status: res.job.status || 'queued',
-            chunksIndexed: res.job.chunks_indexed,
-            chunksTotal: res.job.chunks_total,
-            lastMessage: res.job.logs?.[res.job.logs.length - 1]?.message || 'Queued for processing',
-          })
-        }
-        setActionNotice('Directly pushing to Qdrant! Live flow updating in side notification.')
-        await refresh()
-      } else if (action === 'approve') {
-        setActionNotice('Approved! Message moved directly to Ready to Push tab.')
-        await refresh()
-        setTab('ready')
-      } else {
-        setActionNotice('Draft saved to In Review tab.')
-        await refresh()
-        setTab('review')
-      }
+      setMessageDrafts(prev => {
+        const next = { ...prev }
+        delete next[message.id]
+        return next
+      })
+      setActionNotice(
+        action === 'approve'
+          ? 'Approved! Message moved to Ready to Push.'
+          : 'Draft saved to In Review.'
+      )
+      await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed')
     } finally {
@@ -528,43 +586,37 @@ export function AdminApp() {
     }
   }
 
-  const startInlineEdit = (question: string, message: AdminMessage) => {
-    // Check if there is an existing knowledge item
-    const existing = knowledge.find(k => k.source_message_id === message.id)
-    setEditingMessageId(message.id)
-    setEditQuestion(existing?.question || question || '')
-    setEditContent(existing?.content || message.text || '')
-  }
-
-  const cancelInlineEdit = () => {
-    setEditingMessageId(null)
-    setEditQuestion('')
-    setEditContent('')
-  }
-
-  const directPushMessage = async (question: string, message: AdminMessage) => {
+  // Push a single message straight to Qdrant, using the current edits as written.
+  const directPushMessage = async (conv: AdminConversation, message: AdminMessage) => {
     setError('')
+    const draft = draftFor(conv, message)
+    const content = draft.content.trim()
+    if (!content) {
+      setError('Message content cannot be empty')
+      return
+    }
     setPushingMessageId(message.id)
+    const titleText = (draft.question.trim() || content).slice(0, 45)
+    const title = titleText.length >= 45 ? `${titleText}...` : titleText
+
+    setSinglePushTracker({
+      jobId: 'pending',
+      messageId: message.id,
+      title,
+      step: 'queued',
+      status: 'queued',
+      lastMessage: 'Starting ingestion pipeline...',
+    })
+
     try {
-      const existing = knowledge.find(k => k.source_message_id === message.id)
-      const titleText = (question || existing?.question || message.text || '').slice(0, 45)
-
-      setSinglePushTracker({
-        jobId: 'pending',
-        messageId: message.id,
-        title: titleText + (titleText.length >= 45 ? '...' : ''),
-        step: 'queued',
-        status: 'queued',
-        lastMessage: 'Starting ingestion pipeline...',
-      })
-
       const res = await api('/knowledge/quick-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           source_message_id: message.id,
-          question: question || existing?.question || null,
-          content: message.text,
+          question: draft.question.trim() || null,
+          content,
+          source_type: 'chat',
           action: 'push',
         }),
       })
@@ -575,7 +627,7 @@ export function AdminApp() {
           jobId: res.job.id,
           knowledgeItemId: res.item?.id,
           messageId: message.id,
-          title: titleText + (titleText.length >= 45 ? '...' : ''),
+          title,
           step: res.job.current_step || 'queued',
           status: res.job.status || 'queued',
           chunksIndexed: res.job.chunks_indexed,
@@ -583,6 +635,12 @@ export function AdminApp() {
           lastMessage: res.job.logs?.[res.job.logs.length - 1]?.message || 'Queued for processing',
         })
       }
+      setEditingMessageId(null)
+      setMessageDrafts(prev => {
+        const next = { ...prev }
+        delete next[message.id]
+        return next
+      })
       await refresh()
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Could not push message'
@@ -593,6 +651,57 @@ export function AdminApp() {
           : null
       )
       setPushingMessageId(null)
+    }
+  }
+
+  // Push every not-yet-indexed assistant message in the conversation as one batch.
+  const pushWholeConversation = async (conv: AdminConversation) => {
+    setError('')
+    const pending = conv.messages.filter(m => m.role === 'assistant' && !isAssistantPushed(m))
+    if (pending.length === 0) {
+      setActionNotice('Every answer in this chat is already indexed in Qdrant.')
+      return
+    }
+
+    const payload = pending
+      .map(m => {
+        const draft = draftFor(conv, m)
+        return {
+          source_message_id: m.id,
+          question: draft.question.trim() || null,
+          content: draft.content.trim(),
+        }
+      })
+      .filter(p => p.content.length > 0)
+
+    if (payload.length === 0) {
+      setError('Nothing to push: every pending answer is empty')
+      return
+    }
+
+    setIsPushingConversation(true)
+    try {
+      const res = await api('/knowledge/push-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: payload, source_type: 'chat' }),
+      })
+      setMessageDrafts(prev => {
+        const next = { ...prev }
+        payload.forEach(p => delete next[p.source_message_id])
+        return next
+      })
+      setEditingMessageId(null)
+      setActionNotice(res.message || `Queued ${payload.length} message(s) for ingestion`)
+      if (res.job_ids && res.job_ids.length > 0) {
+        setSelectedJobId(res.job_ids[0])
+      }
+      await refresh()
+      setTab('pipeline')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not push chat to Qdrant')
+    } finally {
+      setIsPushingConversation(false)
     }
   }
 
@@ -929,287 +1038,378 @@ export function AdminApp() {
 
         {/* TAB 1: CHATS */}
         {tab === 'chats' && (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-display text-lg font-bold">Active Chat Conversations</h2>
-                <p className="text-xs text-muted">
-                  Click the <span className="font-semibold text-accent">Pencil icon</span> on any assistant message to edit and approve or push to Qdrant directly.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Toggle to hide/show already pushed messages */}
-                <button
-                  onClick={() => setHidePushedInChats(h => !h)}
-                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-                    hidePushedInChats
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                      : 'border-line bg-surface text-muted hover:text-ink'
-                  }`}
-                  title="Toggle visibility of conversations already pushed to Qdrant"
-                >
-                  {hidePushedInChats ? <EyeSlash size={14} /> : <Eye size={14} />}
-                  <span>{hidePushedInChats ? `Hiding Pushed (${fullyPushedConvCount} convs)` : 'Showing All'}</span>
-                </button>
-
-                <div className="relative w-full sm:w-64">
-                  <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                  <input
-                    type="text"
-                    placeholder="Search chats..."
-                    value={searchChat}
-                    onChange={e => setSearchChat(e.target.value)}
-                    className="w-full rounded-xl border border-line bg-surface py-2 pl-9 pr-3 text-xs focus:border-accent focus:outline-none"
-                  />
+          <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+            <div className="grid min-h-0 grid-cols-1 lg:h-[calc(100dvh-16rem)] lg:grid-cols-[320px_minmax(0,1fr)]">
+              {/* LEFT: conversation list */}
+              <aside className="flex min-h-0 flex-col border-b border-line bg-bg lg:border-b-0 lg:border-r">
+                <div className="space-y-2.5 border-b border-line p-3">
+                  <div className="relative">
+                    <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                    <input
+                      type="text"
+                      placeholder="Search chats..."
+                      value={searchChat}
+                      onChange={e => setSearchChat(e.target.value)}
+                      className="w-full rounded-xl border border-line bg-surface py-2 pl-9 pr-3 text-xs focus:border-accent focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setHidePushedInChats(h => !h)}
+                    className={`inline-flex w-full items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                      hidePushedInChats
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'border-line bg-surface text-muted hover:text-ink'
+                    }`}
+                    title="Toggle visibility of conversations already pushed to Qdrant"
+                  >
+                    {hidePushedInChats ? <EyeSlash size={14} /> : <Eye size={14} />}
+                    <span>
+                      {hidePushedInChats
+                        ? `Hiding Pushed (${fullyPushedConvCount})`
+                        : 'Showing All'}
+                    </span>
+                  </button>
+                  {hidePushedInChats && totalPushedChatMsgs > 0 && (
+                    <p className="text-[10px] leading-relaxed text-muted">
+                      <strong className="text-ink">{fullyPushedConvCount}</strong> fully pushed
+                      conversation(s) ·{' '}
+                      <strong className="text-ink">{totalPushedChatMsgs}</strong> messages are
+                      hidden from this queue.
+                    </p>
+                  )}
                 </div>
-              </div>
-            </div>
 
-            {hidePushedInChats && (fullyPushedConvCount > 0 || totalPushedChatMsgs > 0) && (
-              <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5 text-xs text-muted">
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={15} className="text-emerald-500" weight="bold" />
-                  <span>
-                    <strong>{fullyPushedConvCount} fully pushed conversation(s)</strong> ({totalPushedChatMsgs} messages) are hidden from this active queue.
-                  </span>
-                </div>
-                <button
-                  onClick={() => setTab('pipeline')}
-                  className="font-semibold text-accent hover:underline flex items-center gap-1"
-                >
-                  <span>View in Pushed Records</span>
-                  <ArrowRight size={12} />
-                </button>
-              </div>
-            )}
-
-            {conversationsToDisplay.length === 0 ? (
-              <div className="rounded-2xl border border-line bg-surface p-12 text-center text-muted">
-                <CheckCircle size={36} className="mx-auto mb-2 text-emerald-500/70" />
-                <p className="font-semibold text-ink">All active chats have been reviewed and pushed to Qdrant!</p>
-                <p className="mt-1 text-xs">
-                  {hidePushedInChats
-                    ? 'Click "Hiding Pushed" above to view completed chats or check the Pipeline tab.'
-                    : 'No conversations found.'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {conversationsToDisplay.map(conv => (
-                  <section key={conv.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
-                    <div className="mb-3 flex items-center justify-between border-b border-line/60 pb-3">
-                      <div>
-                        <h3 className="font-semibold text-ink">{conv.title || 'Untitled conversation'}</h3>
-                        <p className="text-xs font-mono text-muted">
-                          ID: {conv.id.slice(0, 8)} • User: {conv.user_id.slice(0, 8)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {conv.isFullyPushed && (
-                          <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            ✓ Pushed to Qdrant
-                          </span>
-                        )}
-                        <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-mono text-muted">
-                          {conv.visibleMessages.length} message(s)
-                        </span>
-                      </div>
+                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+                  {conversationsToDisplay.length === 0 ? (
+                    <div className="px-3 py-10 text-center text-muted">
+                      <CheckCircle size={32} className="mx-auto mb-2 text-emerald-500/70" />
+                      <p className="text-xs font-semibold text-ink">Queue is clear</p>
+                      <p className="mt-1 text-[11px]">
+                        {hidePushedInChats
+                          ? 'Every chat has been pushed. Toggle above to see them.'
+                          : 'No conversations match your search.'}
+                      </p>
                     </div>
+                  ) : (
+                    conversationsToDisplay.map(conv => {
+                      const isActive = conv.id === selectedConversationId
+                      const firstUnpushed = conv.visibleMessages.find(
+                        m => m.role === 'assistant' && !isAssistantPushed(m)
+                      )
+                      const preview =
+                        firstUnpushed?.text ||
+                        conv.visibleMessages[conv.visibleMessages.length - 1]?.text ||
+                        'No messages'
 
-                    <div className="space-y-3">
-                      {conv.visibleMessages.map((message) => {
-                        const isAlreadyPushed = isAssistantPushed(message)
-                        const isInPipeline = inPipelineMessageIds.has(message.id)
-                        const isEditingThis = editingMessageId === message.id
-                        const msgIdx = conv.messages.findIndex(m => m.id === message.id)
-                        const prevUserMsg = [...conv.messages]
-                          .slice(0, msgIdx >= 0 ? msgIdx : undefined)
-                          .reverse()
-                          .find(m => m.role === 'user')
-                        const questionDefault = prevUserMsg ? prevUserMsg.text : conv.title
-
-                        const isThisMsgPushing =
-                          pushingMessageId === message.id ||
-                          ((singlePushTracker?.status === 'indexing' || singlePushTracker?.status === 'queued') &&
-                            singlePushTracker?.messageId === message.id)
-
-                        return (
-                          <div
-                            key={message.id}
-                            className={`flex flex-col gap-2 rounded-xl p-3.5 transition ${
-                              isEditingThis
-                                ? 'border-2 border-accent bg-accent/5 ring-4 ring-accent/10'
-                                : message.role === 'assistant'
-                                ? 'bg-raised/70'
-                                : 'bg-surface border border-line/40'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={`text-xs font-semibold uppercase tracking-wider ${
-                                  message.role === 'assistant' ? 'text-accent' : 'text-muted'
-                                }`}
-                              >
-                                {message.role}
-                              </span>
-
-                              {message.role === 'assistant' && !isEditingThis && (
-                                <div className="flex items-center gap-2">
-                                  {isAlreadyPushed ? (
-                                    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                                      <CheckCircle size={13} weight="bold" /> Pushed to Qdrant
-                                    </span>
-                                  ) : (
-                                    <>
-                                      {isInPipeline && (
-                                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                                          <Clock size={12} weight="bold" /> In Pipeline
-                                        </span>
-                                      )}
-
-                                      {/* Edit with Pencil Button */}
-                                      <button
-                                        onClick={() => startInlineEdit(questionDefault, message)}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-ink shadow-sm transition hover:border-accent hover:text-accent"
-                                        title="Edit question & answer directly"
-                                      >
-                                        <PencilSimple size={13} weight="bold" />
-                                        <span>Edit & Approve</span>
-                                      </button>
-
-                                      {/* Direct Push Button alongside Edit */}
-                                      <button
-                                        disabled={isThisMsgPushing || (!!pushingMessageId && pushingMessageId !== message.id)}
-                                        onClick={() => directPushMessage(questionDefault, message)}
-                                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold shadow-sm transition ${
-                                          isThisMsgPushing
-                                            ? 'border border-accent/40 bg-accent/15 text-accent cursor-not-allowed'
-                                            : 'bg-accent text-accent-ink hover:opacity-90 active:scale-95'
-                                        }`}
-                                        title="Push directly to Qdrant with live step notifications"
-                                      >
-                                        {isThisMsgPushing ? (
-                                          <>
-                                            <CircleNotch size={13} className="animate-spin" />
-                                            <span>
-                                              {singlePushTracker?.step === 'chunking'
-                                                ? 'Chunking...'
-                                                : singlePushTracker?.step === 'embedding'
-                                                ? 'Embedding...'
-                                                : singlePushTracker?.step === 'pushing_qdrant'
-                                                ? 'Pushing Qdrant...'
-                                                : 'Starting...'}
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Play size={12} weight="fill" />
-                                            <span>Push to Qdrant</span>
-                                          </>
-                                        )}
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Normal Message Text View */}
-                            {!isEditingThis ? (
-                              <div className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
-                                {message.text}
-                              </div>
-                            ) : (
-                              /* Inline Editor View */
-                              <div className="mt-2 space-y-3 rounded-xl border border-line bg-surface p-4 shadow-sm">
-                                <div className="flex items-center justify-between border-b border-line/50 pb-2">
-                                  <div className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-                                    <PencilSimple size={15} weight="bold" />
-                                    <span>Direct Chat Editor (One-Step Workflow)</span>
-                                  </div>
-                                  <button
-                                    onClick={cancelInlineEdit}
-                                    className="rounded-lg p-1 text-muted hover:text-ink"
-                                    title="Cancel"
-                                  >
-                                    <X size={15} />
-                                  </button>
-                                </div>
-
-                                <div>
-                                  <label className="mb-1 block text-xs font-semibold text-muted">
-                                    Question / Context / Query
-                                  </label>
-                                  <input
-                                    value={editQuestion}
-                                    onChange={e => setEditQuestion(e.target.value)}
-                                    className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm font-medium focus:border-accent focus:outline-none"
-                                    placeholder="Question or title..."
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="mb-1 block text-xs font-semibold text-muted">
-                                    Answer / Knowledge Content (Canonical)
-                                  </label>
-                                  <textarea
-                                    value={editContent}
-                                    rows={4}
-                                    onChange={e => setEditContent(e.target.value)}
-                                    className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm leading-relaxed focus:border-accent focus:outline-none font-sans"
-                                    placeholder="Edit canonical answer..."
-                                  />
-                                </div>
-
-                                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/50 pt-3">
-                                  <button
-                                    onClick={cancelInlineEdit}
-                                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink"
-                                  >
-                                    Cancel
-                                  </button>
-
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      disabled={isSavingInline}
-                                      onClick={() => handleInlineAction(message, 'draft')}
-                                      className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-accent"
-                                    >
-                                      Save Draft
-                                    </button>
-
-                                    {/* Action 1: Approve and move to Ready to Push */}
-                                    <button
-                                      disabled={isSavingInline}
-                                      onClick={() => handleInlineAction(message, 'approve')}
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-accent bg-accent/10 px-3.5 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent hover:text-accent-ink"
-                                    >
-                                      <Check size={14} weight="bold" />
-                                      <span>Approve → Ready to Push</span>
-                                    </button>
-
-                                    {/* Action 2: Direct 1-Click Push to Qdrant */}
-                                    <button
-                                      disabled={isSavingInline}
-                                      onClick={() => handleInlineAction(message, 'push')}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
-                                    >
-                                      <Play size={13} weight="fill" />
-                                      <span>Push to Qdrant Now</span>
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
+                      return (
+                        <button
+                          key={conv.id}
+                          onClick={() => setSelectedConversationId(conv.id)}
+                          className={`w-full rounded-xl border p-3 text-left transition ${
+                            isActive
+                              ? 'border-accent bg-accent/10 shadow-sm'
+                              : 'border-transparent hover:border-line hover:bg-raised/60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p
+                              className={`line-clamp-1 text-xs font-semibold ${
+                                isActive ? 'text-accent' : 'text-ink'
+                              }`}
+                            >
+                              {conv.title || 'Untitled conversation'}
+                            </p>
+                            {conv.isFullyPushed && (
+                              <CheckCircle
+                                size={14}
+                                weight="fill"
+                                className="shrink-0 text-emerald-500"
+                              />
                             )}
                           </div>
-                        )
-                      })}
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted">
+                            {preview}
+                          </p>
+                          <div className="mt-2 flex items-center gap-2 text-[10px] text-muted">
+                            <span className="font-mono">{conv.id.slice(0, 8)}</span>
+                            <span>·</span>
+                            <span className="font-mono">{conv.messages.length} msgs</span>
+                            {conv.unindexedAssistants > 0 && (
+                              <span className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-600 dark:text-amber-400">
+                                {conv.unindexedAssistants} to push
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </aside>
+
+              {/* RIGHT: full chat transcript */}
+              <section className="flex min-h-0 flex-col bg-bg lg:max-h-[calc(100dvh-16rem)]">
+                {!selectedConversation ? (
+                  <div className="grid flex-1 place-items-center p-10 text-center text-muted">
+                    <div>
+                      <ChatCircle size={40} className="mx-auto mb-3 opacity-50" />
+                      <p className="text-sm font-semibold text-ink">Select a conversation</p>
+                      <p className="mt-1 text-xs">
+                        Pick a chat on the left to read its full history and curate answers.
+                      </p>
                     </div>
-                  </section>
-                ))}
-              </div>
-            )}
+                  </div>
+                ) : (
+                  <>
+                    {/* Transcript header */}
+                    <header className="border-b border-line bg-surface px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <h2 className="truncate font-display text-base font-bold">
+                            {selectedConversation.title || 'Untitled conversation'}
+                          </h2>
+                          <p className="text-[11px] font-mono text-muted">
+                            ID: {selectedConversation.id.slice(0, 8)} • User:{' '}
+                            {selectedConversation.user_id.slice(0, 8)} •{' '}
+                            {selectedConversation.messages.length} message(s)
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {selectedConversation.isFullyPushed && (
+                            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                              ✓ Pushed to Qdrant
+                            </span>
+                          )}
+                          <button
+                            onClick={() => pushWholeConversation(selectedConversation)}
+                            disabled={
+                              isPushingConversation ||
+                              selectedConversation.unindexedAssistants === 0
+                            }
+                            title="Push every un-indexed answer in this chat to Qdrant in one batch"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                          >
+                            {isPushingConversation ? (
+                              <CircleNotch size={14} className="animate-spin" />
+                            ) : (
+                              <PaperPlaneTilt size={14} weight="fill" />
+                            )}
+                            <span>
+                              {isPushingConversation
+                                ? 'Pushing...'
+                                : `Push Whole Chat (${selectedConversation.unindexedAssistants})`}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </header>
+
+                    {/* Messages */}
+                    <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+                      {selectedConversation.visibleMessages.length === 0 ? (
+                        <p className="py-10 text-center text-xs text-muted">
+                          Every message in this chat has been pushed to Qdrant.
+                        </p>
+                      ) : (
+                        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+                          {selectedConversation.visibleMessages.map(message => {
+                            const isUser = message.role === 'user'
+                            const isAlreadyPushed = isAssistantPushed(message)
+                            const isInPipeline = inPipelineMessageIds.has(message.id)
+                            const isEditingThis = editingMessageId === message.id
+                            const draft = draftFor(selectedConversation, message)
+
+                            const isThisMsgPushing =
+                              pushingMessageId === message.id ||
+                              ((singlePushTracker?.status === 'indexing' ||
+                                singlePushTracker?.status === 'queued') &&
+                                singlePushTracker?.messageId === message.id)
+
+                            const stepLabel =
+                              singlePushTracker?.step === 'chunking'
+                                ? 'Chunking...'
+                                : singlePushTracker?.step === 'embedding'
+                                ? 'Embedding...'
+                                : singlePushTracker?.step === 'pushing_qdrant'
+                                ? 'Pushing Qdrant...'
+                                : 'Starting...'
+
+                            return (
+                              <div
+                                key={message.id}
+                                className={`group flex items-end gap-2 ${
+                                  isUser ? 'justify-end' : ''
+                                }`}
+                              >
+                                {!isUser && (
+                                  <div className="pointer-events-none grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
+                                    <Sparkle size={14} weight="duotone" />
+                                  </div>
+                                )}
+
+                                <div
+                                  className={`relative max-w-[min(42rem,90%)] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                                    isUser
+                                      ? 'rounded-br-md bg-accent text-accent-ink'
+                                      : isEditingThis
+                                      ? 'rounded-bl-md border-2 border-accent bg-surface ring-4 ring-accent/10'
+                                      : 'rounded-bl-md border border-line bg-surface shadow-soft'
+                                  }`}
+                                >
+                                  {/* Role + status row */}
+                                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
+                                        isUser ? 'text-accent-ink/70' : 'text-accent'
+                                      }`}
+                                    >
+                                      {isUser ? 'User' : 'Assistant'}
+                                    </span>
+
+                                    {!isUser && isAlreadyPushed && (
+                                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                        <CheckCircle size={11} weight="bold" /> Pushed
+                                      </span>
+                                    )}
+
+                                    {!isUser && !isAlreadyPushed && isInPipeline && (
+                                      <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                        <Clock size={11} weight="bold" /> In Pipeline
+                                      </span>
+                                    )}
+
+                                    {/* Pencil + Paper plane actions */}
+                                    {!isUser && !isEditingThis && !isAlreadyPushed && (
+                                      <div className="ml-auto flex items-center gap-1 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                                        <button
+                                          onClick={() =>
+                                            toggleMessageEdit(selectedConversation, message)
+                                          }
+                                          className="rounded-lg border border-line bg-surface p-1.5 text-ink shadow-sm transition hover:border-accent hover:text-accent"
+                                          title="Edit this message"
+                                          aria-label="Edit message"
+                                        >
+                                          <PencilSimple size={14} weight="bold" />
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            directPushMessage(selectedConversation, message)
+                                          }
+                                          disabled={
+                                            isThisMsgPushing ||
+                                            (!!pushingMessageId && !isThisMsgPushing)
+                                          }
+                                          className={`inline-flex items-center gap-1 rounded-lg p-1.5 shadow-sm transition ${
+                                            isThisMsgPushing
+                                              ? 'bg-accent/15 text-accent'
+                                              : 'bg-accent text-accent-ink hover:opacity-90'
+                                          } disabled:opacity-50`}
+                                          title="Push this message to Qdrant"
+                                          aria-label="Push message to Qdrant"
+                                        >
+                                          {isThisMsgPushing ? (
+                                            <CircleNotch size={14} className="animate-spin" />
+                                          ) : (
+                                            <PaperPlaneTilt size={14} weight="fill" />
+                                          )}
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {!isUser && isThisMsgPushing && (
+                                      <span className="text-[10px] font-semibold text-accent">
+                                        {stepLabel}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Body or inline editor */}
+                                  {!isEditingThis ? (
+                                    <p className="whitespace-pre-wrap">{message.text}</p>
+                                  ) : (
+                                    <div className="mt-1 space-y-3">
+                                      <div>
+                                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                                          Question / Context
+                                        </label>
+                                        <input
+                                          value={draft.question}
+                                          onChange={e =>
+                                            updateDraft(message.id, { question: e.target.value })
+                                          }
+                                          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm font-medium focus:border-accent focus:outline-none"
+                                          placeholder="Question this content answers..."
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
+                                          Answer / Knowledge Content
+                                        </label>
+                                        <textarea
+                                          value={draft.content}
+                                          onChange={e =>
+                                            updateDraft(message.id, { content: e.target.value })
+                                          }
+                                          rows={5}
+                                          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm leading-relaxed focus:border-accent focus:outline-none"
+                                          placeholder="Edit the canonical answer..."
+                                        />
+                                      </div>
+
+                                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/50 pt-3">
+                                        <button
+                                          onClick={() => toggleMessageEdit(selectedConversation, message)}
+                                          className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink"
+                                        >
+                                          <X size={13} weight="bold" /> Close
+                                        </button>
+
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <button
+                                            disabled={isSavingInline}
+                                            onClick={() =>
+                                              saveMessageEdit(selectedConversation, message, 'draft')
+                                            }
+                                            className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-accent disabled:opacity-50"
+                                          >
+                                            Save Draft
+                                          </button>
+                                          <button
+                                            disabled={isSavingInline}
+                                            onClick={() =>
+                                              saveMessageEdit(selectedConversation, message, 'approve')
+                                            }
+                                            className="inline-flex items-center gap-1 rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent hover:text-accent-ink disabled:opacity-50"
+                                          >
+                                            <Check size={13} weight="bold" /> Approve
+                                          </button>
+                                          <button
+                                            disabled={isSavingInline}
+                                            onClick={() =>
+                                              directPushMessage(selectedConversation, message)
+                                            }
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                                          >
+                                            <PaperPlaneTilt size={13} weight="fill" />
+                                            <span>Push to Qdrant</span>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
           </div>
         )}
 
