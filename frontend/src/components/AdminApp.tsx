@@ -129,23 +129,23 @@ type Tone = 'running' | 'indexed' | 'failed' | 'waiting'
 
 const TONE_TEXT: Record<Tone, string> = {
   running: 'text-accent',
-  indexed: 'text-emerald-600 dark:text-emerald-400',
-  failed: 'text-rose-600 dark:text-rose-400',
+  indexed: 'text-ok',
+  failed: 'text-danger',
   waiting: 'text-muted',
 }
 
 const TONE_SURFACE: Record<Tone, string> = {
-  running: 'bg-accent/10',
-  indexed: 'bg-emerald-500/10',
-  failed: 'bg-rose-500/10',
+  running: 'bg-accent-soft',
+  indexed: 'bg-ok-soft',
+  failed: 'bg-danger-soft',
   waiting: 'bg-raised',
 }
 
 // Solid variant of the same tones, for progress fills.
 const TONE_FILL: Record<Tone, string> = {
   running: 'bg-accent',
-  indexed: 'bg-emerald-500',
-  failed: 'bg-rose-500',
+  indexed: 'bg-ok',
+  failed: 'bg-danger',
   waiting: 'bg-muted',
 }
 
@@ -177,7 +177,7 @@ function StatusPill({
   const tone = toneOf(status)
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONE_SURFACE[tone]} ${TONE_TEXT[tone]} ${className}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] text-[11px] font-semibold leading-none ${TONE_SURFACE[tone]} ${TONE_TEXT[tone]} ${className}`}
     >
       {tone === 'running' && (
         <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
@@ -187,17 +187,22 @@ function StatusPill({
   )
 }
 
-// Metrics live in plain layout, not in boxes. At this density a card per
-// number is noise; the number and its label carry it.
+// Metrics sit in plain layout, not in boxes. At this density a card per number
+// is noise; the number and its label carry it. 22px is the only genuinely large
+// type in the app, which is what makes a stat read as a stat.
 function Stat({ label, value, unit, tone }: { label: string; value: string; unit?: string; tone?: Tone }) {
   return (
-    <div className="min-w-0 px-5 first:pl-0">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</p>
-      <p className="mt-1 flex items-baseline gap-1.5">
-        <span className={`font-mono text-xl font-semibold tabular-nums ${tone ? TONE_TEXT[tone] : 'text-ink'}`}>
+    <div className="min-w-0 pr-7 first:pl-0">
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1.5 flex items-baseline gap-1.5">
+        <span
+          className={`font-mono text-[22px] font-semibold leading-none tracking-tight tabular-nums ${
+            tone ? TONE_TEXT[tone] : 'text-ink'
+          }`}
+        >
           {value}
         </span>
-        {unit && <span className="text-[11px] text-muted">{unit}</span>}
+        {unit && <span className="text-[12px] text-muted">{unit}</span>}
       </p>
     </div>
   )
@@ -207,11 +212,11 @@ function Stat({ label, value, unit, tone }: { label: string; value: string; unit
 // vertically and never wraps into an unreadable ribbon.
 function MetaGrid({ entries }: { entries: { label: string; value: string; mono?: boolean }[] }) {
   return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
       {entries.map(e => (
         <div key={e.label} className="min-w-0">
-          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">{e.label}</dt>
-          <dd className={`mt-0.5 truncate text-[13px] text-ink ${e.mono ? 'font-mono' : ''}`} title={e.value}>
+          <dt className="eyebrow">{e.label}</dt>
+          <dd className={`mt-1 truncate text-[13px] text-ink ${e.mono ? 'font-mono' : ''}`} title={e.value}>
             {e.value}
           </dd>
         </div>
@@ -250,27 +255,27 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 
   return (
     <main className="grid min-h-[100dvh] place-items-center bg-bg p-4 text-ink">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-line bg-surface p-6">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-lg border border-line bg-surface p-6">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
             <Database size={18} weight="bold" />
           </div>
           <p className="text-[13px] font-semibold">Second Brain admin</p>
         </div>
-        <h1 className="mt-5 font-display text-xl font-semibold">Sign in</h1>
-        <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+        <h1 className="mt-6 text-[22px] font-semibold leading-tight tracking-tight">Sign in</h1>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
           Use your Supabase credentials to reach the curation and ingestion tools.
         </p>
 
         {supabaseConfigured ? (
-          <div className="mt-5 space-y-3.5">
+          <div className="mt-6 space-y-4">
             <div>
-              <label htmlFor="admin-email" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+              <label htmlFor="admin-email" className="eyebrow mb-1.5 block">
                 Email
               </label>
               <input
                 id="admin-email"
-                className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                className="h-10 w-full rounded-lg border border-line bg-bg px-3 text-[13.5px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                 type="email"
                 autoComplete="username"
                 placeholder="you@company.com"
@@ -280,12 +285,12 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
               />
             </div>
             <div>
-              <label htmlFor="admin-password" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+              <label htmlFor="admin-password" className="eyebrow mb-1.5 block">
                 Password
               </label>
               <input
                 id="admin-password"
-                className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                className="h-10 w-full rounded-lg border border-line bg-bg px-3 text-[13.5px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                 type="password"
                 autoComplete="current-password"
                 placeholder="Your password"
@@ -295,20 +300,20 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
               />
             </div>
             {error && (
-              <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[12px] leading-relaxed text-rose-600 dark:text-rose-400">
+              <p className="rounded-lg bg-danger-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-danger">
                 {error}
               </p>
             )}
             <button
               type="submit"
               disabled={!supabaseConfigured || signingIn}
-              className="w-full rounded-lg bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-ink transition hover:opacity-90 disabled:opacity-50 active:translate-y-px"
+              className="ctl ctl-primary mt-1 h-10 w-full text-[13.5px]"
             >
               {signingIn ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
         ) : (
-          <p className="mt-5 rounded-lg bg-rose-500/10 px-3 py-2.5 text-[12px] leading-relaxed text-rose-600 dark:text-rose-400">
+          <p className="mt-6 rounded-lg bg-danger-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-danger">
             Supabase environment variables are missing, so sign in is unavailable.
           </p>
         )}
@@ -625,8 +630,6 @@ export function AdminApp() {
     () => conversationsToDisplay.find(c => c.id === selectedConversationId) || null,
     [conversationsToDisplay, selectedConversationId]
   )
-
-  const totalPushedChatMsgs = pushedMessageIds.size
 
   // Scroll the transcript to the latest message when the selection changes
   useEffect(() => {
@@ -1078,26 +1081,30 @@ export function AdminApp() {
   if (!session) return <Login onLogin={setSession} />
 
   return (
-    <div className="min-h-[100dvh] bg-bg text-ink">
+    // h-[100dvh] + a flex column + flex-1 min-h-0 down the tree: every tab
+    // fills the viewport instead of floating in the top half of it.
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-bg text-ink">
       {/* Top Header */}
-      <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+      <header className="z-20 shrink-0 border-b border-line bg-surface">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink">
               <Database size={18} weight="bold" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate font-display text-[15px] font-semibold">Second Brain</h1>
-              <p className="hidden truncate text-[11px] text-muted sm:block">
+              <h1 className="truncate text-[19px] font-semibold leading-tight tracking-tight">
+                Second Brain
+              </h1>
+              <p className="mt-0.5 hidden truncate text-[12.5px] leading-tight text-muted sm:block">
                 Curate chat knowledge, push embeddings to Qdrant
               </p>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1.5">
             {/* Only shown when there is genuine live work, otherwise it is decoration */}
             {hasActiveJobs && (
-              <span className="mr-1 hidden items-center gap-1.5 text-[11px] font-semibold text-accent sm:flex">
+              <span className="mr-1 hidden items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-[12px] font-semibold text-accent sm:flex">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 Ingesting
               </span>
@@ -1106,7 +1113,7 @@ export function AdminApp() {
               onClick={refresh}
               title="Refresh all data"
               aria-label="Refresh all data"
-              className="rounded-lg p-2 text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
+              className="ctl ctl-icon ctl-ghost"
             >
               <ArrowClockwise size={17} />
             </button>
@@ -1114,7 +1121,7 @@ export function AdminApp() {
               onClick={() => supabase.auth.signOut()}
               title="Sign out"
               aria-label="Sign out"
-              className="rounded-lg p-2 text-muted transition hover:bg-raised hover:text-rose-600 active:translate-y-px"
+              className="ctl ctl-icon ctl-ghost ctl-danger"
             >
               <SignOut size={17} />
             </button>
@@ -1123,8 +1130,8 @@ export function AdminApp() {
       </header>
 
       {/* Navigation Tabs */}
-      <nav className="sticky top-14 z-10 border-b border-line bg-surface/60 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 sm:px-6">
+      <nav className="z-10 shrink-0 border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-4">
           {navItems.map(item => {
             const isOn = tab === item.id
             return (
@@ -1132,37 +1139,41 @@ export function AdminApp() {
                 key={item.id}
                 onClick={() => setTab(item.id)}
                 aria-current={isOn ? 'page' : undefined}
-                className={`relative flex shrink-0 items-center gap-2 whitespace-nowrap py-3 text-[13px] font-medium transition-colors ${
+                className={`relative flex shrink-0 items-center gap-2 whitespace-nowrap px-3 py-3 text-[13px] font-medium transition-colors ${
                   isOn ? 'text-ink' : 'text-muted hover:text-ink'
                 }`}
               >
                 <item.icon size={16} weight={isOn ? 'bold' : 'regular'} />
                 <span>{item.label}</span>
                 {item.count > 0 && (
-                  <span className={`font-mono text-[11px] tabular-nums ${isOn ? 'text-accent' : 'text-muted'}`}>
+                  <span
+                    className={`rounded-full px-1.5 py-px font-mono text-[11px] font-semibold tabular-nums ${
+                      isOn ? 'bg-accent-soft text-accent' : 'bg-raised text-muted'
+                    }`}
+                  >
                     {item.count}
                   </span>
                 )}
-                {isOn && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent" />}
+                {isOn && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent" />}
               </button>
             )
           })}
         </div>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="mx-auto max-w-7xl p-4 sm:p-6">
+      {/* Main Content Area. flex-1 + min-h-0 is what makes panes fill height. */}
+      <main className="mx-auto flex w-full max-w-[1600px] min-h-0 flex-1 flex-col p-4 sm:p-5">
         {/* Flash Notifications & Errors */}
         {actionNotice && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-raised px-3.5 py-2.5 text-[13px] font-medium text-ink">
+          <div className="mb-3 flex shrink-0 items-center justify-between rounded-lg border border-line bg-raised px-3.5 py-2.5 text-[13px] font-medium text-ink">
             <div className="flex min-w-0 items-center gap-2">
-              <CheckCircle size={16} weight="fill" className="shrink-0 text-emerald-500" />
+              <CheckCircle size={16} weight="fill" className="shrink-0 text-ok" />
               <span className="truncate">{actionNotice}</span>
             </div>
             <button
               onClick={() => setActionNotice(null)}
               aria-label="Dismiss"
-              className="ml-3 shrink-0 rounded p-1 text-muted transition hover:text-ink"
+              className="ctl ctl-icon ctl-ghost ml-3 shrink-0"
             >
               <X size={14} />
             </button>
@@ -1170,15 +1181,15 @@ export function AdminApp() {
         )}
 
         {error && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-raised px-3.5 py-2.5 text-[13px] font-medium text-ink">
+          <div className="mb-3 flex shrink-0 items-center justify-between rounded-lg border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[13px] font-medium text-ink">
             <div className="flex min-w-0 items-center gap-2">
-              <WarningCircle size={16} weight="fill" className="shrink-0 text-rose-500" />
+              <WarningCircle size={16} weight="fill" className="shrink-0 text-danger" />
               <span className="truncate">{error}</span>
             </div>
             <button
               onClick={() => setError('')}
               aria-label="Dismiss"
-              className="ml-3 shrink-0 rounded p-1 text-muted transition hover:text-ink"
+              className="ctl ctl-icon ctl-ghost ml-3 shrink-0"
             >
               <X size={14} />
             </button>
@@ -1187,8 +1198,8 @@ export function AdminApp() {
 
         {/* TAB 1: CHATS */}
         {tab === 'chats' && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-surface">
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[21rem_minmax(0,1fr)]">
               {/* LEFT: conversation list */}
               <aside className="flex min-h-0 flex-col border-b border-line bg-bg lg:border-b-0 lg:border-r">
                 <div className="space-y-2.5 border-b border-line p-3">
@@ -1196,20 +1207,20 @@ export function AdminApp() {
                     <label htmlFor="chat-search" className="sr-only">
                       Search chats
                     </label>
-                    <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                    <MagnifyingGlass size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                     <input
                       id="chat-search"
                       type="search"
                       placeholder="Search chats"
                       value={searchChat}
                       onChange={e => setSearchChat(e.target.value)}
-                      className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                      className="h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                     />
                   </div>
                   <button
                     onClick={() => setHidePushedInChats(h => !h)}
                     aria-pressed={hidePushedInChats}
-                    className={`inline-flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition ${
+                    className={`inline-flex h-8 w-full items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition ${
                       hidePushedInChats ? 'bg-raised text-ink' : 'text-muted hover:bg-raised hover:text-ink'
                     }`}
                     title="Toggle visibility of conversations already pushed to Qdrant"
@@ -1221,20 +1232,12 @@ export function AdminApp() {
                         : 'Showing All'}
                     </span>
                   </button>
-                  {hidePushedInChats && totalPushedChatMsgs > 0 && (
-                    <p className="text-[11px] leading-relaxed text-muted">
-                      <strong className="font-semibold text-ink">{fullyPushedConvCount}</strong> fully
-                      pushed conversations and{' '}
-                      <strong className="font-semibold text-ink">{totalPushedChatMsgs}</strong>{' '}
-                      messages are hidden from this queue.
-                    </p>
-                  )}
                 </div>
 
                 <div className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
                   {conversationsToDisplay.length === 0 ? (
                     <div className="px-5 py-14 text-center">
-                      <CheckCircle size={26} className="mx-auto mb-2.5 text-emerald-500/70" />
+                      <CheckCircle size={26} className="mx-auto mb-2.5 text-ok/70" />
                       <p className="text-[13px] font-medium text-ink">Queue is clear</p>
                       <p className="mx-auto mt-1 max-w-[26ch] text-[12px] leading-relaxed text-muted">
                         {hidePushedInChats
@@ -1264,7 +1267,7 @@ export function AdminApp() {
                           {isActive && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
                           <div className="flex items-start justify-between gap-2">
                             <p
-                              className={`line-clamp-1 min-w-0 flex-1 text-[13px] font-medium ${
+                              className={`line-clamp-1 min-w-0 flex-1 text-[13.5px] font-semibold leading-snug ${
                                 isActive ? 'text-accent' : 'text-ink'
                               }`}
                             >
@@ -1274,7 +1277,7 @@ export function AdminApp() {
                               <CheckCircle
                                 size={14}
                                 weight="fill"
-                                className="shrink-0 text-emerald-500"
+                                className="mt-px shrink-0 text-ok"
                               />
                             )}
                           </div>
@@ -1286,7 +1289,7 @@ export function AdminApp() {
                             <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
                             <span className="font-mono">{conv.messages.length} msgs</span>
                             {conv.unindexedAssistants > 0 && (
-                              <span className="ml-auto font-semibold text-accent">
+                              <span className="ml-auto rounded-full bg-accent-soft px-1.5 py-px font-semibold text-accent">
                                 {conv.unindexedAssistants} to push
                               </span>
                             )}
@@ -1304,8 +1307,8 @@ export function AdminApp() {
                   <div className="grid flex-1 place-items-center p-10 text-center text-muted">
                     <div>
                       <ChatCircle size={40} className="mx-auto mb-3 opacity-50" />
-                      <p className="text-sm font-semibold text-ink">Select a conversation</p>
-                      <p className="mt-1 text-xs">
+                      <p className="text-[15px] font-semibold text-ink">Select a conversation</p>
+                      <p className="mt-1 text-[13px]">
                         Pick a chat on the left to read its full history and curate answers.
                       </p>
                     </div>
@@ -1313,25 +1316,28 @@ export function AdminApp() {
                 ) : (
                   <>
                     {/* Transcript header */}
-                    <header className="border-b border-line bg-surface px-4 py-3">
+                    <header className="shrink-0 border-b border-line bg-surface px-5 py-3.5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <h2 className="truncate font-display text-[15px] font-semibold">
+                          <h2 className="truncate text-[16px] font-semibold leading-tight tracking-tight">
                             {selectedConversation.title || 'Untitled conversation'}
                           </h2>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
-                            <span className="font-mono">chat {selectedConversation.id.slice(0, 8)}</span>
-                            <span aria-hidden className="h-2.5 w-px bg-line" />
-                            <span className="font-mono">user {selectedConversation.user_id.slice(0, 8)}</span>
-                            <span aria-hidden className="h-2.5 w-px bg-line" />
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                            <span className="font-mono">{selectedConversation.id.slice(0, 8)}</span>
+                            <span aria-hidden className="h-3 w-px bg-line" />
+                            <span className="font-mono">
+                              user {selectedConversation.user_id.slice(0, 8)}
+                            </span>
+                            <span aria-hidden className="h-3 w-px bg-line" />
                             <span>{selectedConversation.messages.length} messages</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
                           {selectedConversation.isFullyPushed && (
-                            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                              ✓ Pushed to Qdrant
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-[11px] font-semibold text-ok">
+                              <CheckCircle size={12} weight="fill" />
+                              Pushed to Qdrant
                             </span>
                           )}
                           <button
@@ -1341,7 +1347,7 @@ export function AdminApp() {
                               selectedConversation.unindexedAssistants === 0
                             }
                             title="Push every un-indexed answer in this chat to Qdrant in one batch"
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px disabled:opacity-50"
+                            className="ctl ctl-md ctl-primary"
                           >
                             {isPushingConversation ? (
                               <CircleNotch size={14} className="animate-spin" />
@@ -1359,7 +1365,7 @@ export function AdminApp() {
                     {/* Messages */}
                     <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
                       {selectedConversation.visibleMessages.length === 0 ? (
-                        <p className="py-10 text-center text-xs text-muted">
+                        <p className="py-10 text-center text-[13px] text-muted">
                           Every message in this chat has been pushed to Qdrant.
                         </p>
                       ) : (
@@ -1396,18 +1402,18 @@ export function AdminApp() {
                                 )}
 
                                 <div
-                                  className={`relative max-w-[min(42rem,90%)] rounded-xl px-4 py-3 text-[13px] leading-relaxed ${
+                                  className={`relative max-w-[min(42rem,90%)] rounded-lg px-4 py-3 text-[13.5px] leading-relaxed ${
                                     isUser
-                                      ? 'rounded-br-md bg-accent text-accent-ink'
+                                      ? 'rounded-br-[3px] bg-accent text-accent-ink'
                                       : isEditingThis
-                                      ? 'rounded-bl-md border border-accent bg-surface ring-2 ring-accent/15'
-                                      : 'rounded-bl-md border border-line bg-surface'
+                                      ? 'rounded-bl-[3px] border border-accent bg-surface ring-2 ring-accent/15'
+                                      : 'rounded-bl-[3px] border border-line bg-surface'
                                   }`}
                                 >
                                   {/* Role + status row */}
-                                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                                  <div className="mb-2 flex flex-wrap items-center gap-2">
                                     <span
-                                      className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                                      className={`text-[11px] font-semibold uppercase tracking-[0.09em] ${
                                         isUser ? 'text-accent-ink/70' : 'text-accent'
                                       }`}
                                     >
@@ -1427,11 +1433,11 @@ export function AdminApp() {
                                           onClick={() =>
                                             toggleMessageEdit(selectedConversation, message)
                                           }
-                                          className="rounded-md border border-line bg-surface p-1.5 text-ink transition hover:border-accent hover:text-accent active:translate-y-px"
+                                          className="ctl ctl-icon"
                                           title="Edit this message"
                                           aria-label="Edit message"
                                         >
-                                          <PencilSimple size={14} />
+                                          <PencilSimple size={15} />
                                         </button>
                                         <button
                                           onClick={() =>
@@ -1441,18 +1447,14 @@ export function AdminApp() {
                                             isThisMsgPushing ||
                                             (!!pushingMessageId && !isThisMsgPushing)
                                           }
-                                          className={`inline-flex items-center gap-1 rounded-md p-1.5 transition active:translate-y-px ${
-                                            isThisMsgPushing
-                                              ? 'bg-accent/15 text-accent'
-                                              : 'bg-accent text-accent-ink hover:opacity-90'
-                                          } disabled:opacity-50`}
+                                          className="ctl ctl-icon ctl-primary"
                                           title="Push this message to Qdrant"
                                           aria-label="Push message to Qdrant"
                                         >
                                           {isThisMsgPushing ? (
-                                            <CircleNotch size={14} className="animate-spin" />
+                                            <CircleNotch size={15} className="animate-spin" />
                                           ) : (
-                                            <PaperPlaneTilt size={14} weight="fill" />
+                                            <PaperPlaneTilt size={15} weight="fill" />
                                           )}
                                         </button>
                                       </div>
@@ -1469,9 +1471,7 @@ export function AdminApp() {
                                   ) : (
                                     <div className="mt-1 space-y-3">
                                       <div>
-                                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
-                                          Question or title
-                                        </label>
+                                        <label className="eyebrow mb-1.5 block">Question or title</label>
                                         <input
                                           value={draft.question}
                                           onChange={e =>
@@ -1483,9 +1483,7 @@ export function AdminApp() {
                                       </div>
 
                                       <div>
-                                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
-                                          Canonical answer
-                                        </label>
+                                        <label className="eyebrow mb-1.5 block">Canonical answer</label>
                                         <textarea
                                           value={draft.content}
                                           onChange={e =>
@@ -1500,18 +1498,18 @@ export function AdminApp() {
                                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
                                         <button
                                           onClick={() => toggleMessageEdit(selectedConversation, message)}
-                                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
+                                          className="ctl ctl-sm ctl-ghost"
                                         >
-                                          <X size={13} /> Close
+                                          <X size={14} /> Close
                                         </button>
 
-                                        <div className="flex flex-wrap items-center gap-1.5">
+                                        <div className="flex flex-wrap items-center gap-2">
                                           <button
                                             disabled={isSavingInline}
                                             onClick={() =>
                                               saveMessageEdit(selectedConversation, message, 'draft')
                                             }
-                                            className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-ink transition hover:border-accent active:translate-y-px disabled:opacity-50"
+                                            className="ctl ctl-sm"
                                           >
                                             Save draft
                                           </button>
@@ -1520,18 +1518,18 @@ export function AdminApp() {
                                             onClick={() =>
                                               saveMessageEdit(selectedConversation, message, 'approve')
                                             }
-                                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-ink transition hover:border-accent hover:text-accent active:translate-y-px disabled:opacity-50"
+                                            className="ctl ctl-sm"
                                           >
-                                            <Check size={13} /> Approve
+                                            <Check size={14} /> Approve
                                           </button>
                                           <button
                                             disabled={isSavingInline}
                                             onClick={() =>
                                               directPushMessage(selectedConversation, message)
                                             }
-                                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px disabled:opacity-50"
+                                            className="ctl ctl-sm ctl-primary"
                                           >
-                                            <PaperPlaneTilt size={13} weight="fill" />
+                                            <PaperPlaneTilt size={14} weight="fill" />
                                             Push to Qdrant
                                           </button>
                                         </div>
@@ -1554,17 +1552,17 @@ export function AdminApp() {
 
         {/* TAB 2: IN REVIEW */}
         {tab === 'review' && (
-          <div className="space-y-6">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pb-2">
             {/* Upload Document Draft box */}
-            <form onSubmit={uploadFile} className="rounded-xl border border-dashed border-line bg-surface/70 p-5">
+            <form onSubmit={uploadFile} className="rounded-lg border border-dashed border-line bg-surface p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-accent/10 p-2.5 text-accent">
+                  <div className="rounded-lg bg-accent-soft p-2.5 text-accent">
                     <CloudArrowUp size={22} />
                   </div>
                   <div>
-                    <h3 className="text-[13px] font-semibold">Upload a document for review</h3>
-                    <p className="text-[12px] text-muted">Add a .txt or .md file to the review queue.</p>
+                    <h3 className="text-[14px] font-semibold leading-tight">Upload a document for review</h3>
+                    <p className="mt-0.5 text-[12px] text-muted">Add a .txt or .md file to the review queue.</p>
                   </div>
                 </div>
 
@@ -1575,12 +1573,9 @@ export function AdminApp() {
                     accept=".txt,.md,text/plain,text/markdown"
                     required
                     aria-label="Document file"
-                    className="text-[12px] file:mr-2 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-ink hover:file:bg-raised"
+                    className="text-[12px] file:mr-2 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-ink hover:file:bg-raised"
                   />
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-accent px-3.5 py-2 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px"
-                  >
+                  <button type="submit" className="ctl ctl-md ctl-primary">
                     Upload draft
                   </button>
                 </div>
@@ -1588,56 +1583,53 @@ export function AdminApp() {
             </form>
 
             <div>
-              <h2 className="font-display text-[15px] font-semibold text-ink">
+              <h2 className="text-[16px] font-semibold leading-tight tracking-tight text-ink">
                 Drafts awaiting review
-                <span className="ml-2 font-mono text-[13px] font-normal tabular-nums text-muted">
+                <span className="ml-2 font-mono text-[13px] font-medium tabular-nums text-muted">
                   {draftItems.length}
                 </span>
               </h2>
-              <p className="mt-1 max-w-[60ch] text-[12px] leading-relaxed text-muted">
+              <p className="mt-1.5 max-w-[68ch] text-[13px] leading-relaxed text-muted">
                 Edit the question and the canonical answer. Approving moves the item to Ready to Push.
               </p>
             </div>
 
             {draftItems.length === 0 ? (
-              <div className="rounded-xl border border-line bg-surface p-12 text-center">
+              <div className="rounded-lg border border-line bg-surface px-5 py-14 text-center">
                 <FileText size={28} className="mx-auto mb-2.5 text-muted/60" />
-                <p className="text-[13px] font-medium text-ink">Nothing in review</p>
-                <p className="mx-auto mt-1 max-w-[34ch] text-[12px] leading-relaxed text-muted">
+                <p className="text-[14px] font-semibold text-ink">Nothing in review</p>
+                <p className="mx-auto mt-1.5 max-w-[38ch] text-[13px] leading-relaxed text-muted">
                   Edit any assistant message in the Chats tab, or upload a document above.
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
                 {draftItems.map((item) => (
-                  <article key={item.id} className="rounded-xl border border-line bg-surface p-5">
-                    <div className="mb-4 flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[11px] text-muted">{item.source_type}</span>
-                      <span aria-hidden className="h-2.5 w-px bg-line" />
+                  <article key={item.id} className="rounded-lg border border-line bg-surface p-4">
+                    <div className="mb-3.5 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-raised px-2 py-0.5 font-mono text-[11px] text-muted">
+                        {item.source_type}
+                      </span>
                       <span className="font-mono text-[11px] text-muted">{item.id.slice(0, 8)}</span>
                       <StatusPill status={item.status} label="In review" className="ml-auto" />
                     </div>
 
                     <div className="space-y-3">
                       <div>
-                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
-                          Question or title
-                        </label>
+                        <label className="eyebrow mb-1.5 block">Question or title</label>
                         <input
                           value={item.question || ''}
                           onChange={e => {
                             const val = e.target.value
                             setKnowledge(prev => prev.map(k => (k.id === item.id ? { ...k, question: val } : k)))
                           }}
-                          className="w-full rounded-lg border border-line bg-bg px-3.5 py-2 text-[13px] font-medium text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                          className="w-full rounded-lg border border-line bg-bg px-3.5 py-2 text-[13.5px] font-medium text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                           placeholder="What question does this content answer?"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
-                          Canonical answer
-                        </label>
+                        <label className="eyebrow mb-1.5 block">Canonical answer</label>
                         <textarea
                           value={item.content}
                           rows={5}
@@ -1645,31 +1637,22 @@ export function AdminApp() {
                             const val = e.target.value
                             setKnowledge(prev => prev.map(k => (k.id === item.id ? { ...k, content: val } : k)))
                           }}
-                          className="w-full rounded-lg border border-line bg-bg px-3.5 py-2 font-sans text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                          className="w-full rounded-lg border border-line bg-bg px-3.5 py-2 font-sans text-[13.5px] leading-relaxed text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                           placeholder="Polish the text that will be embedded."
                         />
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
-                      <button
-                        onClick={() => deleteItem(item)}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-rose-600 transition hover:bg-rose-500/10 active:translate-y-px"
-                      >
+                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+                      <button onClick={() => deleteItem(item)} className="ctl ctl-sm ctl-ghost ctl-danger">
                         <Trash size={14} /> Discard
                       </button>
 
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => updateDraftItem(item)}
-                          className="rounded-lg border border-line px-3.5 py-1.5 text-[12px] font-medium text-ink transition hover:border-accent active:translate-y-px"
-                        >
+                        <button onClick={() => updateDraftItem(item)} className="ctl ctl-sm">
                           Save draft
                         </button>
-                        <button
-                          onClick={() => approveItem(item)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px"
-                        >
+                        <button onClick={() => approveItem(item)} className="ctl ctl-sm ctl-primary">
                           <Check size={14} weight="bold" /> Approve
                         </button>
                       </div>
@@ -1683,28 +1666,28 @@ export function AdminApp() {
 
         {/* TAB 3: READY TO PUSH */}
         {tab === 'ready' && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-line bg-surface p-4">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="mb-4 shrink-0 rounded-lg border border-line bg-surface p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="font-display text-[15px] font-semibold text-ink">
+                  <h2 className="text-[16px] font-semibold leading-tight tracking-tight text-ink">
                     Ready to push
-                    <span className="ml-2 font-mono text-[13px] font-normal tabular-nums text-muted">
+                    <span className="ml-2 font-mono text-[13px] font-medium tabular-nums text-muted">
                       {approvedItems.length}
                     </span>
                   </h2>
-                  <p className="mt-1 max-w-[52ch] text-[12px] leading-relaxed text-muted">
+                  <p className="mt-1.5 max-w-[58ch] text-[13px] leading-relaxed text-muted">
                     Approved answers waiting to be embedded. Push one at a time, or push everything in
                     safe batches.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
                   {selectedItemIds.length > 0 && (
                     <button
                       onClick={() => pushBatch(selectedItemIds)}
                       disabled={isPushingBatch}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-[12px] font-medium text-ink transition hover:border-accent hover:text-accent disabled:opacity-50 active:translate-y-px"
+                      className="ctl ctl-md"
                     >
                       <Play size={14} weight="fill" />
                       Push selected ({selectedItemIds.length})
@@ -1714,7 +1697,7 @@ export function AdminApp() {
                   <button
                     onClick={() => pushBatch()}
                     disabled={approvedItems.length === 0 || isPushingBatch}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 disabled:opacity-50 active:translate-y-px"
+                    className="ctl ctl-md ctl-primary"
                   >
                     <Stack size={15} weight="bold" />
                     Push all ({approvedItems.length})
@@ -1723,7 +1706,7 @@ export function AdminApp() {
               </div>
 
               {approvedItems.length > 5 && (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-[12px] text-muted">
+                <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-[12px] text-muted">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1733,28 +1716,28 @@ export function AdminApp() {
                         if (e.target.checked) setSelectedItemIds(approvedItems.map(i => i.id))
                         else setSelectedItemIds([])
                       }}
-                      className="rounded border-line accent-[rgb(var(--c-accent))]"
+                      className="h-4 w-4 rounded border-line accent-[rgb(var(--c-accent))]"
                     />
                     <label htmlFor="select-all" className="cursor-pointer font-medium text-ink">
                       Select all {approvedItems.length}
                     </label>
                   </div>
-                  <span className="text-[11px]">Rate limits are handled automatically</span>
+                  <span className="text-[12px]">Rate limits are handled automatically</span>
                 </div>
               )}
             </div>
 
             {approvedItems.length === 0 ? (
-              <div className="rounded-xl border border-line bg-surface p-12 text-center">
+              <div className="flex-1 rounded-lg border border-line bg-surface px-5 py-14 text-center">
                 <CheckCircle size={28} className="mx-auto mb-2.5 text-muted/60" />
-                <p className="text-[13px] font-medium text-ink">Nothing queued for push</p>
-                <p className="mx-auto mt-1 max-w-[38ch] text-[12px] leading-relaxed text-muted">
+                <p className="text-[14px] font-semibold text-ink">Nothing queued for push</p>
+                <p className="mx-auto mt-1.5 max-w-[42ch] text-[13px] leading-relaxed text-muted">
                   Approve a draft from the In Review tab, or edit and approve a message in Chats.
                 </p>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-line bg-surface">
-                <div className="divide-y divide-line">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-line bg-surface">
+                <div className="h-full divide-y divide-line overflow-y-auto">
                   {approvedItems.map(item => {
                     const isChecked = selectedItemIds.includes(item.id)
                     return (
@@ -1772,14 +1755,14 @@ export function AdminApp() {
                             if (e.target.checked) setSelectedItemIds(ids => [...ids, item.id])
                             else setSelectedItemIds(ids => ids.filter(id => id !== item.id))
                           }}
-                          className="mt-0.5 shrink-0 rounded border-line accent-[rgb(var(--c-accent))]"
+                          className="mt-1 h-4 w-4 shrink-0 rounded border-line accent-[rgb(var(--c-accent))]"
                         />
 
                         <div className="min-w-0 flex-1 basis-64">
-                          <h4 className="truncate text-[13px] font-medium text-ink">
+                          <h4 className="truncate text-[13.5px] font-semibold leading-snug text-ink">
                             {item.question || 'Untitled record'}
                           </h4>
-                          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">
+                          <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-muted">
                             {item.content}
                           </p>
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
@@ -1794,27 +1777,24 @@ export function AdminApp() {
                           </div>
                         </div>
 
-                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                        <div className="ml-auto flex shrink-0 items-center gap-1.5">
                           <button
                             onClick={() => revertItem(item)}
                             title="Send this item back to In Review"
-                            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
+                            className="ctl ctl-sm"
                           >
-                            <ArrowUUpLeft size={13} /> Revert
+                            <ArrowUUpLeft size={14} /> Revert
                           </button>
                           <button
                             onClick={() => deleteItem(item)}
                             title="Delete this item"
                             aria-label="Delete this item"
-                            className="rounded-lg px-2 py-1.5 text-muted transition hover:bg-raised hover:text-rose-600 active:translate-y-px"
+                            className="ctl ctl-icon ctl-ghost ctl-danger"
                           >
-                            <Trash size={13} />
+                            <Trash size={14} />
                           </button>
-                          <button
-                            onClick={() => pushSingleItem(item)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px"
-                          >
-                            <Play size={13} weight="fill" /> Push
+                          <button onClick={() => pushSingleItem(item)} className="ctl ctl-sm ctl-primary">
+                            <Play size={14} weight="fill" /> Push
                           </button>
                         </div>
                       </article>
@@ -1828,9 +1808,9 @@ export function AdminApp() {
 
         {/* TAB 4: PIPELINE FLOW, LOGS & PUSHED RECORDS */}
         {tab === 'pipeline' && (
-          <div className="flex flex-1 flex-col gap-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
             {/* Metrics sit in plain layout. A box per number is noise at this density. */}
-            <div className="flex flex-wrap items-center justify-between gap-y-4 rounded-xl border border-line bg-surface px-5 py-4">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-y-4 rounded-lg border border-line bg-surface px-5 py-4">
               <div className="flex flex-wrap items-center gap-y-4">
                 <Stat
                   label="Qdrant vectors"
@@ -1862,7 +1842,7 @@ export function AdminApp() {
                   fetchQdrantStats()
                   refresh()
                 }}
-                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
+                className="ctl ctl-sm ml-auto shrink-0"
               >
                 <ArrowClockwise size={14} className={isRefreshingStats ? 'animate-spin' : ''} />
                 Refresh
@@ -1870,13 +1850,15 @@ export function AdminApp() {
             </div>
 
             {/* RECORDS + LOGS WORKSPACE */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
-              <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)]">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-surface">
+              <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,25rem)_minmax(0,1fr)]">
                 {/* LEFT: searchable record list */}
                 <div className="flex min-h-0 flex-col border-b border-line lg:border-b-0 lg:border-r">
-                  <div className="space-y-3 border-b border-line p-4">
+                  <div className="shrink-0 space-y-3 border-b border-line p-4">
                     <div className="flex items-baseline justify-between gap-2">
-                      <h3 className="font-display text-[13px] font-semibold text-ink">Records</h3>
+                      <h3 className="text-[14px] font-semibold leading-tight tracking-tight text-ink">
+                        Records
+                      </h3>
                       <span className="font-mono text-[11px] tabular-nums text-muted">
                         {filteredRecords.length} of {pipelineRecords.length}
                       </span>
@@ -1893,7 +1875,7 @@ export function AdminApp() {
                         value={recordSearch}
                         onChange={e => setRecordSearch(e.target.value)}
                         placeholder="Search records"
-                        className="w-full rounded-lg border border-line bg-bg py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                        className="h-9 w-full rounded-lg border border-line bg-bg pl-9 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                       />
                     </div>
 
@@ -1912,8 +1894,8 @@ export function AdminApp() {
                             key={f.key}
                             onClick={() => setRecordStatus(f.key)}
                             aria-pressed={isOn}
-                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition ${
-                              isOn ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                            className={`flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[12px] font-medium transition ${
+                              isOn ? 'bg-surface text-ink' : 'text-muted hover:text-ink'
                             }`}
                           >
                             {f.label}
@@ -1928,8 +1910,8 @@ export function AdminApp() {
                     {filteredRecords.length === 0 ? (
                       <div className="px-5 py-14 text-center">
                         <Stack size={26} className="mx-auto mb-2.5 text-muted/60" />
-                        <p className="text-[13px] font-medium text-ink">No matching records</p>
-                        <p className="mx-auto mt-1 max-w-[26ch] text-[12px] leading-relaxed text-muted">
+                        <p className="text-[14px] font-semibold text-ink">No matching records</p>
+                        <p className="mx-auto mt-1.5 max-w-[30ch] text-[13px] leading-relaxed text-muted">
                           {pipelineRecords.length === 0
                             ? 'Push a chat or an approved item and it will appear here.'
                             : 'Try a different search term or status filter.'}
@@ -1954,8 +1936,10 @@ export function AdminApp() {
                           >
                             {isActive && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
                             <div className="flex items-start justify-between gap-3">
+                              {/* line-clamp-2, not truncate: a truncated record title
+                                  hid which record you were actually looking at. */}
                               <p
-                                className={`min-w-0 flex-1 truncate text-[13px] font-medium ${
+                                className={`line-clamp-2 min-w-0 flex-1 text-[13.5px] font-semibold leading-snug ${
                                   isActive ? 'text-accent' : 'text-ink'
                                 }`}
                               >
@@ -1988,21 +1972,21 @@ export function AdminApp() {
                     <div className="grid h-full place-items-center px-6 py-16 text-center">
                       <div>
                         <Terminal size={28} className="mx-auto mb-3 text-muted/60" />
-                        <p className="text-[13px] font-medium text-ink">Select a record</p>
-                        <p className="mx-auto mt-1 max-w-[30ch] text-[12px] leading-relaxed text-muted">
+                        <p className="text-[14px] font-semibold text-ink">Select a record</p>
+                        <p className="mx-auto mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-muted">
                           Choose a record to see its ingestion stages, vector metadata and full execution log.
                         </p>
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-5 p-5">
+                    <div className="space-y-6 p-5">
                       {/* Title + actions */}
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-display text-[15px] font-semibold leading-snug text-ink">
+                          <h4 className="text-[18px] font-semibold leading-snug tracking-tight text-ink">
                             {activeRecord.item.question || 'Untitled record'}
                           </h4>
-                          <div className="mt-2 flex items-center gap-2">
+                          <div className="mt-2.5 flex items-center gap-2.5">
                             <StatusPill status={recordStatusOf(activeRecord)} />
                             {activeRecord.item.source_message_id && (
                               <button
@@ -2015,38 +1999,36 @@ export function AdminApp() {
                                   if (owner) setSelectedConversationId(owner.id)
                                   setTab('chats')
                                 }}
-                                className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted transition hover:text-accent"
+                                className="ctl ctl-sm ctl-ghost"
                               >
-                                <ChatCircle size={13} /> View in chat
+                                <ChatCircle size={14} /> View in chat
                               </button>
                             )}
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex shrink-0 items-center gap-2">
                           <button
                             onClick={() => revertItem(activeRecord.item, true)}
                             title="Send this record back to In Review"
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-muted transition hover:border-rose-500/40 hover:text-rose-600 active:translate-y-px"
+                            className="ctl ctl-sm"
                           >
-                            <ArrowUUpLeft size={13} /> Revert
+                            <ArrowUUpLeft size={14} /> Revert
                           </button>
                           <button
                             onClick={() => deleteItem(activeRecord.item)}
                             title="Delete this record and purge its Qdrant points"
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-muted transition hover:border-rose-500/40 hover:text-rose-600 active:translate-y-px"
+                            className="ctl ctl-sm ctl-danger"
                           >
-                            <Trash size={13} /> Delete
+                            <Trash size={14} /> Delete
                           </button>
                         </div>
                       </div>
 
                       {/* Stage rail. Icons carry the step, order carries the sequence. */}
                       <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                          Ingestion stages
-                        </p>
-                        <ol className="mt-3 flex items-start">
+                        <p className="eyebrow">Ingestion stages</p>
+                        <ol className="mt-3.5 flex items-start">
                           {PIPELINE_STEPS.map((step, idx) => {
                             const Icon = step.icon
                             const state = activeJob
@@ -2058,35 +2040,35 @@ export function AdminApp() {
                                 <div className="flex items-center">
                                   <span
                                     title={step.desc}
-                                    className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+                                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${
                                       state === 'active'
                                         ? 'bg-accent text-accent-ink'
                                         : state === 'done'
-                                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                        ? 'bg-ok-soft text-ok'
                                         : state === 'failed'
-                                        ? 'bg-rose-500 text-white'
+                                        ? 'bg-danger text-white'
                                         : 'bg-raised text-muted'
                                     }`}
                                   >
-                                    <Icon size={11} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
+                                    <Icon size={12} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
                                   </span>
                                   {!isLast && (
                                     <span
                                       aria-hidden
                                       className={`mx-1.5 h-px min-w-3 flex-1 ${
-                                        state === 'done' ? 'bg-emerald-500/40' : 'bg-line'
+                                        state === 'done' ? 'bg-ok/40' : 'bg-line'
                                       }`}
                                     />
                                   )}
                                 </div>
                                 <span
-                                  className={`mt-2 truncate pr-3 text-[11px] font-medium ${
+                                  className={`mt-2 truncate pr-3 text-[12px] font-medium ${
                                     state === 'active'
                                       ? 'text-accent'
                                       : state === 'done'
                                       ? 'text-ink'
                                       : state === 'failed'
-                                      ? 'text-rose-600 dark:text-rose-400'
+                                      ? 'text-danger'
                                       : 'text-muted'
                                   }`}
                                 >
@@ -2099,13 +2081,13 @@ export function AdminApp() {
 
                         {activeJob && activeJob.chunks_total > 0 && (
                           <div className="mt-4">
-                            <div className="flex items-baseline justify-between text-[11px] text-muted">
+                            <div className="flex items-baseline justify-between text-[12px] text-muted">
                               <span>Chunks embedded</span>
                               <span className="font-mono tabular-nums">
                                 {activeJob.chunks_indexed} / {activeJob.chunks_total}
                               </span>
                             </div>
-                            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-raised">
+                            <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-raised">
                               <div
                                 className={`h-full transition-all duration-500 ${
                                   TONE_FILL[toneOf(activeJob.status)]
@@ -2124,8 +2106,8 @@ export function AdminApp() {
 
                       {/* Vector metadata as a scannable grid, not a separator run */}
                       <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Metadata</p>
-                        <div className="mt-3">
+                        <p className="eyebrow">Metadata</p>
+                        <div className="mt-3.5">
                           <MetaGrid
                             entries={[
                               { label: 'Item', value: shortId(activeRecord.item.id), mono: true },
@@ -2141,21 +2123,18 @@ export function AdminApp() {
 
                       {/* What actually got embedded */}
                       <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                          Embedded content
-                        </p>
-                        <p className="mt-3 whitespace-pre-wrap rounded-lg border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-ink">
+                        <p className="eyebrow">Embedded content</p>
+                        <p className="mt-3.5 whitespace-pre-wrap rounded-lg border border-line bg-surface px-4 py-3.5 text-[13.5px] leading-relaxed text-ink">
                           {activeRecord.item.content}
                         </p>
                       </div>
 
-                      {/* Log console: aligned columns so the stream reads as a log */}
+                      {/* Log console: aligned columns so the stream reads as a log.
+                          Colours come from the console tokens, so it themes with the app. */}
                       <div>
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                            Execution log
-                          </p>
-                          <div className="flex items-center gap-1">
+                          <p className="eyebrow">Execution log</p>
+                          <div className="flex items-center gap-1.5">
                             {activeJob?.logs && activeJob.logs.length > 1 && (
                               <div className="flex items-center gap-0.5 rounded-lg bg-raised p-0.5">
                                 {(
@@ -2171,8 +2150,8 @@ export function AdminApp() {
                                       key={f.key}
                                       onClick={() => setLogLevelFilter(f.key)}
                                       aria-pressed={isOn}
-                                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${
-                                        isOn ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                                      className={`h-7 rounded-lg px-2.5 text-[12px] font-medium transition ${
+                                        isOn ? 'bg-surface text-ink' : 'text-muted hover:text-ink'
                                       }`}
                                     >
                                       {f.label}
@@ -2185,59 +2164,61 @@ export function AdminApp() {
                               onClick={refresh}
                               title="Refresh logs"
                               aria-label="Refresh logs"
-                              className="rounded-lg p-1.5 text-muted transition hover:bg-raised hover:text-ink"
+                              className="ctl ctl-icon ctl-ghost"
                             >
-                              <ArrowClockwise size={13} />
+                              <ArrowClockwise size={14} />
                             </button>
                           </div>
                         </div>
 
-                        <div className="mt-3 overflow-hidden rounded-lg border border-[#1c2128] bg-[#0d1117]">
+                        <div className="mt-3.5 overflow-hidden rounded-lg border border-console-line bg-console">
                           <div
                             ref={logScrollRef}
-                            className="max-h-80 overflow-y-auto p-3 font-mono text-[12px] leading-relaxed"
+                            className="max-h-80 overflow-y-auto p-3.5 font-mono text-[12px] leading-relaxed"
                           >
                             {!activeJob ? (
-                              <p className="text-slate-500">
+                              <p className="text-console-muted">
                                 This record has no ingestion job. Push it from the Ready to Push tab to
                                 generate logs.
                               </p>
                             ) : visibleLogs.length === 0 ? (
-                              <p className="text-slate-400">
+                              <p className="text-console-muted">
                                 [{new Date(activeJob.created_at).toLocaleTimeString()}] [QUEUED] Job
                                 initialized. Processing chunks: {activeJob.chunks_indexed}/
                                 {activeJob.chunks_total}...
                               </p>
                             ) : (
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 {visibleLogs.map((log, lIdx) => (
                                   <div
                                     key={lIdx}
-                                    className="grid grid-cols-[auto_4.25rem_minmax(0,1fr)] items-baseline gap-x-3"
+                                    className="grid grid-cols-[auto_4.5rem_minmax(0,1fr)] items-baseline gap-x-3"
                                   >
-                                    <span className="whitespace-nowrap text-slate-500">{log.timestamp}</span>
+                                    <span className="whitespace-nowrap text-console-muted">
+                                      {log.timestamp}
+                                    </span>
                                     <span
                                       className={`text-[11px] font-semibold uppercase tracking-wider ${
                                         log.level === 'error'
-                                          ? 'text-rose-400'
+                                          ? 'text-danger'
                                           : log.level === 'warning'
-                                          ? 'text-amber-400'
-                                          : 'text-slate-500'
+                                          ? 'text-warn'
+                                          : 'text-console-muted'
                                       }`}
                                     >
                                       {log.level}
                                     </span>
-                                    <span className="break-words text-slate-200">{log.message}</span>
+                                    <span className="break-words text-console-ink">{log.message}</span>
                                   </div>
                                 ))}
                                 {logLevelFilter === 'all' && activeJob.status === 'indexed' && (
-                                  <p className="flex items-center gap-1.5 pt-1 font-semibold text-emerald-400">
+                                  <p className="flex items-center gap-1.5 pt-1.5 font-semibold text-ok">
                                     <CheckCircle size={13} weight="bold" />
                                     Ingestion completed and verified in the Qdrant collection.
                                   </p>
                                 )}
                                 {logLevelFilter === 'all' && activeJob.status === 'failed' && (
-                                  <p className="flex items-center gap-1.5 pt-1 font-semibold text-rose-400">
+                                  <p className="flex items-center gap-1.5 pt-1.5 font-semibold text-danger">
                                     <WarningCircle size={13} weight="bold" />
                                     Job failed: {activeJob.error || 'Unknown error'}
                                   </p>
@@ -2275,26 +2256,26 @@ export function AdminApp() {
         <aside
           role="status"
           aria-live="polite"
-          className="fixed bottom-5 right-5 z-50 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface/95 p-4 shadow-lift backdrop-blur-md"
+          className="fixed bottom-5 right-5 z-50 w-[23rem] max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-4 shadow-lift"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               {trackerDone ? (
-                <CheckCircle size={18} weight="fill" className="shrink-0 text-emerald-500" />
+                <CheckCircle size={18} weight="fill" className="shrink-0 text-ok" />
               ) : trackerFailed ? (
-                <WarningCircle size={18} weight="fill" className="shrink-0 text-rose-500" />
+                <WarningCircle size={18} weight="fill" className="shrink-0 text-danger" />
               ) : (
                 <CircleNotch size={18} className="shrink-0 animate-spin text-accent" weight="bold" />
               )}
               <div className="min-w-0">
-                <h4 className="truncate text-[13px] font-semibold leading-tight text-ink">
+                <h4 className="truncate text-[14px] font-semibold leading-tight tracking-tight text-ink">
                   {trackerDone
                     ? 'Indexed in Qdrant'
                     : trackerFailed
                     ? 'Ingestion failed'
                     : 'Pushing to Qdrant'}
                 </h4>
-                <p className="mt-0.5 text-[11px] text-muted">
+                <p className="mt-0.5 text-[12px] text-muted">
                   {trackerDone
                     ? 'Vectors stored and verified'
                     : trackerFailed
@@ -2305,7 +2286,7 @@ export function AdminApp() {
             </div>
             <button
               onClick={() => setSinglePushTracker(null)}
-              className="-mr-1 -mt-1 shrink-0 rounded p-1 text-muted transition hover:bg-raised hover:text-ink"
+              className="ctl ctl-icon ctl-ghost -mr-1 -mt-1 shrink-0"
               title="Dismiss"
               aria-label="Dismiss progress"
             >
@@ -2313,12 +2294,12 @@ export function AdminApp() {
             </button>
           </div>
 
-          <p className="mt-3 truncate text-[12px] text-ink" title={singlePushTracker.title}>
+          <p className="mt-3.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink" title={singlePushTracker.title}>
             {singlePushTracker.title}
           </p>
 
           {/* Same stage rail as the pipeline tab, so the two never disagree */}
-          <ol className="mt-3.5 flex items-start">
+          <ol className="mt-4 flex items-start">
             {PIPELINE_STEPS.map((step, idx) => {
               const Icon = step.icon
               const state = getStepState(idx, currentStepId, singlePushTracker.status)
@@ -2327,27 +2308,27 @@ export function AdminApp() {
                 <li key={step.id} className={`flex min-w-0 flex-col ${isLast ? 'shrink-0' : 'flex-1'}`}>
                   <div className="flex items-center">
                     <span
-                      className={`grid h-4 w-4 shrink-0 place-items-center rounded-full ${
+                      className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
                         state === 'active'
                           ? 'bg-accent text-accent-ink'
                           : state === 'done'
-                          ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                          ? 'bg-ok-soft text-ok'
                           : state === 'failed'
-                          ? 'bg-rose-500 text-white'
+                          ? 'bg-danger text-white'
                           : 'bg-raised text-muted'
                       }`}
                     >
-                      <Icon size={9} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
+                      <Icon size={10} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
                     </span>
                     {!isLast && (
                       <span
                         aria-hidden
-                        className={`mx-1 h-px min-w-2 flex-1 ${state === 'done' ? 'bg-emerald-500/40' : 'bg-line'}`}
+                        className={`mx-1 h-px min-w-2 flex-1 ${state === 'done' ? 'bg-ok/40' : 'bg-line'}`}
                       />
                     )}
                   </div>
                   <span
-                    className={`mt-1.5 truncate pr-2 text-[11px] font-medium ${
+                    className={`mt-1.5 truncate pr-2 text-[12px] font-medium ${
                       state === 'active' ? 'text-accent' : state === 'done' ? 'text-ink' : 'text-muted'
                     }`}
                   >
@@ -2360,14 +2341,14 @@ export function AdminApp() {
 
           {/* Real chunk progress only. No invented percentages. */}
           {chunkPct !== null && !trackerDone && !trackerFailed && (
-            <div className="mt-3.5">
-              <div className="flex items-baseline justify-between text-[11px] text-muted">
+            <div className="mt-4">
+              <div className="flex items-baseline justify-between text-[12px] text-muted">
                 <span>Chunks embedded</span>
                 <span className="font-mono tabular-nums">
                   {singlePushTracker.chunksIndexed || 0} / {singlePushTracker.chunksTotal}
                 </span>
               </div>
-              <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-raised">
+              <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-raised">
                 <div
                   className={`h-full transition-all duration-500 ${TONE_FILL[trackerTone]}`}
                   style={{ width: `${chunkPct}%` }}
@@ -2377,17 +2358,17 @@ export function AdminApp() {
           )}
 
           {singlePushTracker.error && (
-            <p className="mt-3 break-words rounded-lg bg-rose-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-rose-600 dark:text-rose-400">
+            <p className="mt-3.5 break-words rounded-lg bg-danger-soft px-3 py-2.5 text-[12px] leading-relaxed text-danger">
               {singlePushTracker.error}
             </p>
           )}
 
-          <p className="mt-3 truncate text-[11px] text-muted">
+          <p className="mt-3.5 line-clamp-2 text-[12px] leading-relaxed text-muted">
             {singlePushTracker.lastMessage || 'Waiting for the background worker'}
           </p>
 
-          <div className="mt-3.5 flex items-center justify-between border-t border-line pt-3">
-            <span className="font-mono text-[11px] text-muted">
+          <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
+            <span className="font-mono text-[12px] text-muted">
               {singlePushTracker.chunksTotal
                 ? `${singlePushTracker.chunksIndexed || 0}/${singlePushTracker.chunksTotal} chunks`
                 : 'single message'}
@@ -2401,10 +2382,10 @@ export function AdminApp() {
                 }
                 setTab('pipeline')
               }}
-              className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent transition hover:underline"
+              className="ctl ctl-sm ctl-ghost text-accent hover:text-accent"
             >
               View logs
-              <ArrowRight size={12} />
+              <ArrowRight size={13} />
             </button>
           </div>
         </aside>
