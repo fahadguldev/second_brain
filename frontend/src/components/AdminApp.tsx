@@ -106,13 +106,125 @@ type AdminConversation = {
   messages: AdminMessage[]
 }
 
+// Labels are the action itself. No "Step 1 / Stage 2" numbering.
 const PIPELINE_STEPS = [
-  { id: 'queued', label: '1. Queued', icon: Clock, desc: 'Scheduled in background' },
-  { id: 'chunking', label: '2. Chunking', icon: FileText, desc: 'Text split into RAG chunks' },
-  { id: 'embedding', label: '3. Embedding', icon: Sparkle, desc: 'Generating 3072-dim vectors via Gemini' },
-  { id: 'pushing_qdrant', label: '4. Pushing to Qdrant', icon: CloudArrowUp, desc: 'Upserting vectors into collection' },
-  { id: 'indexed', label: '5. Completed', icon: CheckCircle, desc: 'Verified into Qdrant & database' },
+  { id: 'queued', label: 'Queued', icon: Clock, desc: 'Scheduled in background' },
+  { id: 'chunking', label: 'Chunk', icon: FileText, desc: 'Text split into RAG chunks' },
+  { id: 'embedding', label: 'Embed', icon: Sparkle, desc: 'Generating vectors via Gemini' },
+  { id: 'pushing_qdrant', label: 'Upsert', icon: CloudArrowUp, desc: 'Writing vectors to the collection' },
+  { id: 'indexed', label: 'Verified', icon: CheckCircle, desc: 'Confirmed in Qdrant and the database' },
 ] as const
+
+/**
+ * One status system for the whole console.
+ * Hue encodes urgency, nothing else:
+ *   running  -> accent   (work in flight, the one interactive colour)
+ *   indexed  -> emerald  (finished and verified)
+ *   failed   -> rose     (broken, needs a human)
+ *   waiting  -> neutral  (queued on a human: draft, approved)
+ * Anything waiting on a person is deliberately colourless so that colour
+ * always means "look here".
+ */
+type Tone = 'running' | 'indexed' | 'failed' | 'waiting'
+
+const TONE_TEXT: Record<Tone, string> = {
+  running: 'text-accent',
+  indexed: 'text-emerald-600 dark:text-emerald-400',
+  failed: 'text-rose-600 dark:text-rose-400',
+  waiting: 'text-muted',
+}
+
+const TONE_SURFACE: Record<Tone, string> = {
+  running: 'bg-accent/10',
+  indexed: 'bg-emerald-500/10',
+  failed: 'bg-rose-500/10',
+  waiting: 'bg-raised',
+}
+
+// Solid variant of the same tones, for progress fills.
+const TONE_FILL: Record<Tone, string> = {
+  running: 'bg-accent',
+  indexed: 'bg-emerald-500',
+  failed: 'bg-rose-500',
+  waiting: 'bg-muted',
+}
+
+const TONE_LABEL: Record<Tone, string> = {
+  running: 'Running',
+  indexed: 'Indexed',
+  failed: 'Failed',
+  waiting: 'Waiting',
+}
+
+function toneOf(status?: string | null): Tone {
+  if (status === 'indexed') return 'indexed'
+  if (status === 'failed') return 'failed'
+  if (status === 'queued' || status === 'indexing') return 'running'
+  return 'waiting'
+}
+
+// The single status renderer. Anything that needs to show state uses this so a
+// record, a row, a tab and a toast never disagree about what "running" looks like.
+function StatusPill({
+  status,
+  label,
+  className = '',
+}: {
+  status?: string | null
+  label?: string
+  className?: string
+}) {
+  const tone = toneOf(status)
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${TONE_SURFACE[tone]} ${TONE_TEXT[tone]} ${className}`}
+    >
+      {tone === 'running' && (
+        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
+      )}
+      {label ?? TONE_LABEL[tone]}
+    </span>
+  )
+}
+
+// Metrics live in plain layout, not in boxes. At this density a card per
+// number is noise; the number and its label carry it.
+function Stat({ label, value, unit, tone }: { label: string; value: string; unit?: string; tone?: Tone }) {
+  return (
+    <div className="min-w-0 px-5 first:pl-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</p>
+      <p className="mt-1 flex items-baseline gap-1.5">
+        <span className={`font-mono text-xl font-semibold tabular-nums ${tone ? TONE_TEXT[tone] : 'text-ink'}`}>
+          {value}
+        </span>
+        {unit && <span className="text-[11px] text-muted">{unit}</span>}
+      </p>
+    </div>
+  )
+}
+
+// Label/value pairs on a grid instead of a middle-dot run, so metadata scans
+// vertically and never wraps into an unreadable ribbon.
+function MetaGrid({ entries }: { entries: { label: string; value: string; mono?: boolean }[] }) {
+  return (
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+      {entries.map(e => (
+        <div key={e.label} className="min-w-0">
+          <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">{e.label}</dt>
+          <dd className={`mt-0.5 truncate text-[13px] text-ink ${e.mono ? 'font-mono' : ''}`} title={e.value}>
+            {e.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+type AdminTab = 'chats' | 'review' | 'ready' | 'pipeline'
+
+function shortId(id?: string | null) {
+  return id ? id.slice(0, 8) : 'none'
+}
 
 function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   const [email, setEmail] = useState('')
@@ -137,41 +249,69 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-bg p-4 text-ink">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-soft">
-        <div className="flex items-center gap-2">
-          <Database size={20} className="text-accent" />
-          <p className="text-xs font-semibold uppercase tracking-[.2em] text-accent">Admin portal</p>
+    <main className="grid min-h-[100dvh] place-items-center bg-bg p-4 text-ink">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-line bg-surface p-6">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-ink">
+            <Database size={18} weight="bold" />
+          </div>
+          <p className="text-[13px] font-semibold">Second Brain admin</p>
         </div>
-        <h1 className="mt-2 font-display text-2xl font-bold">Sign in with Supabase</h1>
-        <p className="mt-1 text-xs text-muted">Manage chats, review answers, and push to Qdrant vector database.</p>
-        {!supabaseConfigured && (
-          <p className="mt-3 rounded-lg bg-rose-500/10 p-2.5 text-xs text-rose-600">Supabase environment variables are missing.</p>
+        <h1 className="mt-5 font-display text-xl font-semibold">Sign in</h1>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+          Use your Supabase credentials to reach the curation and ingestion tools.
+        </p>
+
+        {supabaseConfigured ? (
+          <div className="mt-5 space-y-3.5">
+            <div>
+              <label htmlFor="admin-email" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+                Email
+              </label>
+              <input
+                id="admin-email"
+                className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                type="email"
+                autoComplete="username"
+                placeholder="you@company.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="admin-password" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+                Password
+              </label>
+              <input
+                id="admin-password"
+                className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                type="password"
+                autoComplete="current-password"
+                placeholder="Your password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {error && (
+              <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[12px] leading-relaxed text-rose-600 dark:text-rose-400">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={!supabaseConfigured || signingIn}
+              className="w-full rounded-lg bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-ink transition hover:opacity-90 disabled:opacity-50 active:translate-y-px"
+            >
+              {signingIn ? 'Signing in...' : 'Sign in'}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-lg bg-rose-500/10 px-3 py-2.5 text-[12px] leading-relaxed text-rose-600 dark:text-rose-400">
+            Supabase environment variables are missing, so sign in is unavailable.
+          </p>
         )}
-        <input
-          className="mt-5 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-        />
-        <input
-          className="mt-3 w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-        />
-        {error && <p className="mt-3 text-xs text-rose-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={!supabaseConfigured || signingIn}
-          className="mt-5 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-ink transition hover:opacity-90 disabled:opacity-50"
-        >
-          {signingIn ? 'Signing in...' : 'Sign in'}
-        </button>
       </form>
     </main>
   )
@@ -180,7 +320,7 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 export function AdminApp() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'chats' | 'review' | 'ready' | 'pipeline'>('chats')
+  const [tab, setTab] = useState<AdminTab>('chats')
 
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
@@ -332,8 +472,8 @@ export function AdminApp() {
   }, [jobs, singlePushTracker])
 
   // Synchronize single push tracker with background job polling updates
-  useEffect(() => {
-    if (!singlePushTracker) return
+  useEffect((): (() => void) | undefined => {
+    if (!singlePushTracker) return undefined
     const matchingJob = jobs.find(j => j.id === singlePushTracker.jobId)
     if (matchingJob) {
       const lastLog =
@@ -363,6 +503,7 @@ export function AdminApp() {
         return () => clearTimeout(timer)
       }
     }
+    return undefined
   }, [jobs, singlePushTracker?.jobId])
 
   // Real-time polling when jobs are executing
@@ -402,10 +543,9 @@ export function AdminApp() {
 
   // Clear notice after 4 seconds
   useEffect(() => {
-    if (actionNotice) {
-      const t = setTimeout(() => setActionNotice(null), 4000)
-      return () => clearTimeout(t)
-    }
+    if (!actionNotice) return undefined
+    const t = setTimeout(() => setActionNotice(null), 4000)
+    return () => clearTimeout(t)
   }, [actionNotice])
 
   // Filter conversations for Chats tab: completely omit pushed conversations and pushed turns
@@ -927,204 +1067,150 @@ export function AdminApp() {
     return 'pending'
   }
 
-  if (loading) return <div className="grid min-h-screen place-items-center bg-bg text-muted">Loading admin portal...</div>
+  const navItems: { id: AdminTab; label: string; icon: typeof Cpu; count: number }[] = [
+    { id: 'chats', label: 'Chats', icon: ChatCircle, count: conversationsToDisplay.length },
+    { id: 'review', label: 'In Review', icon: FileText, count: draftItems.length },
+    { id: 'ready', label: 'Ready to Push', icon: CloudArrowUp, count: approvedItems.length },
+    { id: 'pipeline', label: 'Pipeline', icon: Cpu, count: indexedItems.length },
+  ]
+
+  if (loading) return <div className="grid min-h-[100dvh] place-items-center bg-bg text-muted">Loading admin portal...</div>
   if (!session) return <Login onLogin={setSession} />
 
   return (
-    <div className="min-h-screen bg-bg text-ink">
+    <div className="min-h-[100dvh] bg-bg text-ink">
       {/* Top Header */}
       <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-accent-ink shadow-sm">
-              <Database size={20} weight="bold" />
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink">
+              <Database size={18} weight="bold" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-base font-bold sm:text-lg">Second Brain Portal</h1>
-                <span className="rounded-full bg-raised px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                  Knowledge Sync
-                </span>
-              </div>
-              <p className="hidden text-xs text-muted sm:block">Curate chat knowledge & push embeddings to Qdrant</p>
+            <div className="min-w-0">
+              <h1 className="truncate font-display text-[15px] font-semibold">Second Brain</h1>
+              <p className="hidden truncate text-[11px] text-muted sm:block">
+                Curate chat knowledge, push embeddings to Qdrant
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Live Qdrant Vectors & Pushed Records Badge */}
-            <button
-              onClick={() => {
-                setTab('pipeline')
-                fetchQdrantStats()
-              }}
-              title="Click to view Qdrant Pipeline stats and verified records"
-              className="flex items-center gap-2.5 rounded-xl border border-line bg-raised/70 px-3 py-1.5 transition hover:border-accent/40"
-            >
-              <div className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-              </div>
-              <div className="text-left">
-                <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted">Qdrant Vectors</span>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="font-mono text-xs font-bold text-accent">
-                    {qdrantStats?.points_count !== undefined ? qdrantStats.points_count.toLocaleString() : '3,061'}
-                  </span>
-                  <span className="text-[10px] text-muted">
-                    ({indexedItems.length} pushed)
-                  </span>
-                </div>
-              </div>
-              <ArrowClockwise size={13} className={`text-muted ${isRefreshingStats ? 'animate-spin' : ''}`} />
-            </button>
-
-            {/* Refresh All */}
+          <div className="flex shrink-0 items-center gap-1">
+            {/* Only shown when there is genuine live work, otherwise it is decoration */}
+            {hasActiveJobs && (
+              <span className="mr-1 hidden items-center gap-1.5 text-[11px] font-semibold text-accent sm:flex">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                Ingesting
+              </span>
+            )}
             <button
               onClick={refresh}
               title="Refresh all data"
-              className="rounded-xl border border-line bg-surface p-2 text-muted transition hover:border-accent/40 hover:text-ink"
+              aria-label="Refresh all data"
+              className="rounded-lg p-2 text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
             >
-              <ArrowClockwise size={18} />
+              <ArrowClockwise size={17} />
             </button>
-
-            {/* Sign Out */}
             <button
               onClick={() => supabase.auth.signOut()}
               title="Sign out"
-              className="rounded-xl border border-line bg-surface p-2 text-muted transition hover:border-accent/40 hover:text-rose-500"
+              aria-label="Sign out"
+              className="rounded-lg p-2 text-muted transition hover:bg-raised hover:text-rose-600 active:translate-y-px"
             >
-              <SignOut size={18} />
+              <SignOut size={17} />
             </button>
           </div>
         </div>
       </header>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-line bg-surface/50">
-        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-4 py-3 sm:px-6">
-          <button
-            onClick={() => setTab('chats')}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              tab === 'chats'
-                ? 'bg-accent text-accent-ink shadow-sm'
-                : 'border border-line bg-surface text-muted hover:border-accent/40 hover:text-ink'
-            }`}
-          >
-            <ChatCircle size={18} weight={tab === 'chats' ? 'bold' : 'regular'} />
-            <span>1. Chats</span>
-            <span className="rounded-full bg-surface/30 px-1.5 py-0.5 text-xs font-mono">
-              {conversationsToDisplay.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setTab('review')}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              tab === 'review'
-                ? 'bg-accent text-accent-ink shadow-sm'
-                : 'border border-line bg-surface text-muted hover:border-accent/40 hover:text-ink'
-            }`}
-          >
-            <FileText size={18} weight={tab === 'review' ? 'bold' : 'regular'} />
-            <span>2. In Review</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-mono font-bold ${
-                draftItems.length > 0 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'bg-surface/30'
-              }`}
-            >
-              {draftItems.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setTab('ready')}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              tab === 'ready'
-                ? 'bg-accent text-accent-ink shadow-sm'
-                : 'border border-line bg-surface text-muted hover:border-accent/40 hover:text-ink'
-            }`}
-          >
-            <CloudArrowUp size={18} weight={tab === 'ready' ? 'bold' : 'regular'} />
-            <span>3. Ready to Push</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-mono font-bold ${
-                approvedItems.length > 0 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-surface/30'
-              }`}
-            >
-              {approvedItems.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setTab('pipeline')}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              tab === 'pipeline'
-                ? 'bg-accent text-accent-ink shadow-sm'
-                : 'border border-line bg-surface text-muted hover:border-accent/40 hover:text-ink'
-            }`}
-          >
-            <Cpu size={18} weight={tab === 'pipeline' ? 'bold' : 'regular'} />
-            <span>4. Pipeline & Pushed Records</span>
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-              {indexedItems.length}
-            </span>
-            {hasActiveJobs && (
-              <span className="flex h-2 w-2 rounded-full bg-sky-400 ring-2 ring-sky-300 animate-pulse" />
-            )}
-          </button>
+      <nav className="sticky top-14 z-10 border-b border-line bg-surface/60 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl gap-6 overflow-x-auto px-4 sm:px-6">
+          {navItems.map(item => {
+            const isOn = tab === item.id
+            return (
+              <button
+                key={item.id}
+                onClick={() => setTab(item.id)}
+                aria-current={isOn ? 'page' : undefined}
+                className={`relative flex shrink-0 items-center gap-2 whitespace-nowrap py-3 text-[13px] font-medium transition-colors ${
+                  isOn ? 'text-ink' : 'text-muted hover:text-ink'
+                }`}
+              >
+                <item.icon size={16} weight={isOn ? 'bold' : 'regular'} />
+                <span>{item.label}</span>
+                {item.count > 0 && (
+                  <span className={`font-mono text-[11px] tabular-nums ${isOn ? 'text-accent' : 'text-muted'}`}>
+                    {item.count}
+                  </span>
+                )}
+                {isOn && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent" />}
+              </button>
+            )
+          })}
         </div>
-      </div>
+      </nav>
 
       {/* Main Content Area */}
       <main className="mx-auto max-w-7xl p-4 sm:p-6">
         {/* Flash Notifications & Errors */}
         {actionNotice && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-sm font-medium text-emerald-600 dark:text-emerald-300">
-            <div className="flex items-center gap-2">
-              <CheckCircle size={18} weight="bold" />
-              <span>{actionNotice}</span>
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-raised px-3.5 py-2.5 text-[13px] font-medium text-ink">
+            <div className="flex min-w-0 items-center gap-2">
+              <CheckCircle size={16} weight="fill" className="shrink-0 text-emerald-500" />
+              <span className="truncate">{actionNotice}</span>
             </div>
-            <button onClick={() => setActionNotice(null)} className="text-xs opacity-75 hover:opacity-100">
-              Dismiss
+            <button
+              onClick={() => setActionNotice(null)}
+              aria-label="Dismiss"
+              className="ml-3 shrink-0 rounded p-1 text-muted transition hover:text-ink"
+            >
+              <X size={14} />
             </button>
           </div>
         )}
 
         {error && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-sm font-medium text-rose-600 dark:text-rose-300">
-            <div className="flex items-center gap-2">
-              <WarningCircle size={18} weight="bold" />
-              <span>{error}</span>
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-raised px-3.5 py-2.5 text-[13px] font-medium text-ink">
+            <div className="flex min-w-0 items-center gap-2">
+              <WarningCircle size={16} weight="fill" className="shrink-0 text-rose-500" />
+              <span className="truncate">{error}</span>
             </div>
-            <button onClick={() => setError('')} className="text-xs opacity-75 hover:opacity-100">
-              Dismiss
+            <button
+              onClick={() => setError('')}
+              aria-label="Dismiss"
+              className="ml-3 shrink-0 rounded p-1 text-muted transition hover:text-ink"
+            >
+              <X size={14} />
             </button>
           </div>
         )}
 
         {/* TAB 1: CHATS */}
         {tab === 'chats' && (
-          <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-            <div className="grid min-h-0 grid-cols-1 lg:h-[calc(100dvh-16rem)] lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
               {/* LEFT: conversation list */}
               <aside className="flex min-h-0 flex-col border-b border-line bg-bg lg:border-b-0 lg:border-r">
                 <div className="space-y-2.5 border-b border-line p-3">
                   <div className="relative">
+                    <label htmlFor="chat-search" className="sr-only">
+                      Search chats
+                    </label>
                     <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                     <input
-                      type="text"
-                      placeholder="Search chats..."
+                      id="chat-search"
+                      type="search"
+                      placeholder="Search chats"
                       value={searchChat}
                       onChange={e => setSearchChat(e.target.value)}
-                      className="w-full rounded-xl border border-line bg-surface py-2 pl-9 pr-3 text-xs focus:border-accent focus:outline-none"
+                      className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                     />
                   </div>
                   <button
                     onClick={() => setHidePushedInChats(h => !h)}
-                    className={`inline-flex w-full items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-                      hidePushedInChats
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'border-line bg-surface text-muted hover:text-ink'
+                    aria-pressed={hidePushedInChats}
+                    className={`inline-flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition ${
+                      hidePushedInChats ? 'bg-raised text-ink' : 'text-muted hover:bg-raised hover:text-ink'
                     }`}
                     title="Toggle visibility of conversations already pushed to Qdrant"
                   >
@@ -1136,21 +1222,21 @@ export function AdminApp() {
                     </span>
                   </button>
                   {hidePushedInChats && totalPushedChatMsgs > 0 && (
-                    <p className="text-[10px] leading-relaxed text-muted">
-                      <strong className="text-ink">{fullyPushedConvCount}</strong> fully pushed
-                      conversation(s) ·{' '}
-                      <strong className="text-ink">{totalPushedChatMsgs}</strong> messages are
-                      hidden from this queue.
+                    <p className="text-[11px] leading-relaxed text-muted">
+                      <strong className="font-semibold text-ink">{fullyPushedConvCount}</strong> fully
+                      pushed conversations and{' '}
+                      <strong className="font-semibold text-ink">{totalPushedChatMsgs}</strong>{' '}
+                      messages are hidden from this queue.
                     </p>
                   )}
                 </div>
 
-                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+                <div className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
                   {conversationsToDisplay.length === 0 ? (
-                    <div className="px-3 py-10 text-center text-muted">
-                      <CheckCircle size={32} className="mx-auto mb-2 text-emerald-500/70" />
-                      <p className="text-xs font-semibold text-ink">Queue is clear</p>
-                      <p className="mt-1 text-[11px]">
+                    <div className="px-5 py-14 text-center">
+                      <CheckCircle size={26} className="mx-auto mb-2.5 text-emerald-500/70" />
+                      <p className="text-[13px] font-medium text-ink">Queue is clear</p>
+                      <p className="mx-auto mt-1 max-w-[26ch] text-[12px] leading-relaxed text-muted">
                         {hidePushedInChats
                           ? 'Every chat has been pushed. Toggle above to see them.'
                           : 'No conversations match your search.'}
@@ -1171,15 +1257,14 @@ export function AdminApp() {
                         <button
                           key={conv.id}
                           onClick={() => setSelectedConversationId(conv.id)}
-                          className={`w-full rounded-xl border p-3 text-left transition ${
-                            isActive
-                              ? 'border-accent bg-accent/10 shadow-sm'
-                              : 'border-transparent hover:border-line hover:bg-raised/60'
+                          className={`relative block w-full px-4 py-3 text-left transition-colors ${
+                            isActive ? 'bg-accent/[0.07]' : 'hover:bg-raised/60'
                           }`}
                         >
+                          {isActive && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
                           <div className="flex items-start justify-between gap-2">
                             <p
-                              className={`line-clamp-1 text-xs font-semibold ${
+                              className={`line-clamp-1 min-w-0 flex-1 text-[13px] font-medium ${
                                 isActive ? 'text-accent' : 'text-ink'
                               }`}
                             >
@@ -1193,15 +1278,15 @@ export function AdminApp() {
                               />
                             )}
                           </div>
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted">
+                          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">
                             {preview}
                           </p>
-                          <div className="mt-2 flex items-center gap-2 text-[10px] text-muted">
+                          <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
                             <span className="font-mono">{conv.id.slice(0, 8)}</span>
-                            <span>·</span>
+                            <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
                             <span className="font-mono">{conv.messages.length} msgs</span>
                             {conv.unindexedAssistants > 0 && (
-                              <span className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-600 dark:text-amber-400">
+                              <span className="ml-auto font-semibold text-accent">
                                 {conv.unindexedAssistants} to push
                               </span>
                             )}
@@ -1214,7 +1299,7 @@ export function AdminApp() {
               </aside>
 
               {/* RIGHT: full chat transcript */}
-              <section className="flex min-h-0 flex-col bg-bg lg:max-h-[calc(100dvh-16rem)]">
+              <section className="flex min-h-0 flex-col bg-bg">
                 {!selectedConversation ? (
                   <div className="grid flex-1 place-items-center p-10 text-center text-muted">
                     <div>
@@ -1231,14 +1316,16 @@ export function AdminApp() {
                     <header className="border-b border-line bg-surface px-4 py-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <h2 className="truncate font-display text-base font-bold">
+                          <h2 className="truncate font-display text-[15px] font-semibold">
                             {selectedConversation.title || 'Untitled conversation'}
                           </h2>
-                          <p className="text-[11px] font-mono text-muted">
-                            ID: {selectedConversation.id.slice(0, 8)} • User:{' '}
-                            {selectedConversation.user_id.slice(0, 8)} •{' '}
-                            {selectedConversation.messages.length} message(s)
-                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                            <span className="font-mono">chat {selectedConversation.id.slice(0, 8)}</span>
+                            <span aria-hidden className="h-2.5 w-px bg-line" />
+                            <span className="font-mono">user {selectedConversation.user_id.slice(0, 8)}</span>
+                            <span aria-hidden className="h-2.5 w-px bg-line" />
+                            <span>{selectedConversation.messages.length} messages</span>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -1254,18 +1341,16 @@ export function AdminApp() {
                               selectedConversation.unindexedAssistants === 0
                             }
                             title="Push every un-indexed answer in this chat to Qdrant in one batch"
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px disabled:opacity-50"
                           >
                             {isPushingConversation ? (
                               <CircleNotch size={14} className="animate-spin" />
                             ) : (
                               <PaperPlaneTilt size={14} weight="fill" />
                             )}
-                            <span>
-                              {isPushingConversation
-                                ? 'Pushing...'
-                                : `Push Whole Chat (${selectedConversation.unindexedAssistants})`}
-                            </span>
+                            {isPushingConversation
+                              ? 'Pushing...'
+                              : `Push whole chat (${selectedConversation.unindexedAssistants})`}
                           </button>
                         </div>
                       </div>
@@ -1292,14 +1377,10 @@ export function AdminApp() {
                                 singlePushTracker?.status === 'queued') &&
                                 singlePushTracker?.messageId === message.id)
 
+                            // Reuse the shared stage labels so the bubble, the toast and the
+                            // pipeline rail never describe the same step differently.
                             const stepLabel =
-                              singlePushTracker?.step === 'chunking'
-                                ? 'Chunking...'
-                                : singlePushTracker?.step === 'embedding'
-                                ? 'Embedding...'
-                                : singlePushTracker?.step === 'pushing_qdrant'
-                                ? 'Pushing Qdrant...'
-                                : 'Starting...'
+                              PIPELINE_STEPS.find(s => s.id === singlePushTracker?.step)?.label ?? 'Queued'
 
                             return (
                               <div
@@ -1315,34 +1396,28 @@ export function AdminApp() {
                                 )}
 
                                 <div
-                                  className={`relative max-w-[min(42rem,90%)] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                                  className={`relative max-w-[min(42rem,90%)] rounded-xl px-4 py-3 text-[13px] leading-relaxed ${
                                     isUser
                                       ? 'rounded-br-md bg-accent text-accent-ink'
                                       : isEditingThis
-                                      ? 'rounded-bl-md border-2 border-accent bg-surface ring-4 ring-accent/10'
-                                      : 'rounded-bl-md border border-line bg-surface shadow-soft'
+                                      ? 'rounded-bl-md border border-accent bg-surface ring-2 ring-accent/15'
+                                      : 'rounded-bl-md border border-line bg-surface'
                                   }`}
                                 >
                                   {/* Role + status row */}
                                   <div className="mb-1.5 flex flex-wrap items-center gap-2">
                                     <span
-                                      className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
+                                      className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${
                                         isUser ? 'text-accent-ink/70' : 'text-accent'
                                       }`}
                                     >
                                       {isUser ? 'User' : 'Assistant'}
                                     </span>
 
-                                    {!isUser && isAlreadyPushed && (
-                                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                                        <CheckCircle size={11} weight="bold" /> Pushed
-                                      </span>
-                                    )}
+                                    {!isUser && isAlreadyPushed && <StatusPill status="indexed" label="Pushed" />}
 
                                     {!isUser && !isAlreadyPushed && isInPipeline && (
-                                      <span className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                                        <Clock size={11} weight="bold" /> In Pipeline
-                                      </span>
+                                      <StatusPill status="indexing" label="In pipeline" />
                                     )}
 
                                     {/* Pencil + Paper plane actions */}
@@ -1352,11 +1427,11 @@ export function AdminApp() {
                                           onClick={() =>
                                             toggleMessageEdit(selectedConversation, message)
                                           }
-                                          className="rounded-lg border border-line bg-surface p-1.5 text-ink shadow-sm transition hover:border-accent hover:text-accent"
+                                          className="rounded-md border border-line bg-surface p-1.5 text-ink transition hover:border-accent hover:text-accent active:translate-y-px"
                                           title="Edit this message"
                                           aria-label="Edit message"
                                         >
-                                          <PencilSimple size={14} weight="bold" />
+                                          <PencilSimple size={14} />
                                         </button>
                                         <button
                                           onClick={() =>
@@ -1366,7 +1441,7 @@ export function AdminApp() {
                                             isThisMsgPushing ||
                                             (!!pushingMessageId && !isThisMsgPushing)
                                           }
-                                          className={`inline-flex items-center gap-1 rounded-lg p-1.5 shadow-sm transition ${
+                                          className={`inline-flex items-center gap-1 rounded-md p-1.5 transition active:translate-y-px ${
                                             isThisMsgPushing
                                               ? 'bg-accent/15 text-accent'
                                               : 'bg-accent text-accent-ink hover:opacity-90'
@@ -1384,9 +1459,7 @@ export function AdminApp() {
                                     )}
 
                                     {!isUser && isThisMsgPushing && (
-                                      <span className="text-[10px] font-semibold text-accent">
-                                        {stepLabel}
-                                      </span>
+                                      <StatusPill status="indexing" label={stepLabel} />
                                     )}
                                   </div>
 
@@ -1396,22 +1469,22 @@ export function AdminApp() {
                                   ) : (
                                     <div className="mt-1 space-y-3">
                                       <div>
-                                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
-                                          Question / Context
+                                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+                                          Question or title
                                         </label>
                                         <input
                                           value={draft.question}
                                           onChange={e =>
                                             updateDraft(message.id, { question: e.target.value })
                                           }
-                                          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm font-medium focus:border-accent focus:outline-none"
-                                          placeholder="Question this content answers..."
+                                          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[13px] font-medium text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                                          placeholder="What question does this answer?"
                                         />
                                       </div>
 
                                       <div>
-                                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted">
-                                          Answer / Knowledge Content
+                                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+                                          Canonical answer
                                         </label>
                                         <textarea
                                           value={draft.content}
@@ -1419,47 +1492,47 @@ export function AdminApp() {
                                             updateDraft(message.id, { content: e.target.value })
                                           }
                                           rows={5}
-                                          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm leading-relaxed focus:border-accent focus:outline-none"
-                                          placeholder="Edit the canonical answer..."
+                                          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-[13px] leading-relaxed text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                                          placeholder="Polish the text that will be embedded."
                                         />
                                       </div>
 
-                                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/50 pt-3">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
                                         <button
                                           onClick={() => toggleMessageEdit(selectedConversation, message)}
-                                          className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink"
+                                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
                                         >
-                                          <X size={13} weight="bold" /> Close
+                                          <X size={13} /> Close
                                         </button>
 
-                                        <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-1.5">
                                           <button
                                             disabled={isSavingInline}
                                             onClick={() =>
                                               saveMessageEdit(selectedConversation, message, 'draft')
                                             }
-                                            className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-accent disabled:opacity-50"
+                                            className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-ink transition hover:border-accent active:translate-y-px disabled:opacity-50"
                                           >
-                                            Save Draft
+                                            Save draft
                                           </button>
                                           <button
                                             disabled={isSavingInline}
                                             onClick={() =>
                                               saveMessageEdit(selectedConversation, message, 'approve')
                                             }
-                                            className="inline-flex items-center gap-1 rounded-lg border border-accent bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent hover:text-accent-ink disabled:opacity-50"
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-ink transition hover:border-accent hover:text-accent active:translate-y-px disabled:opacity-50"
                                           >
-                                            <Check size={13} weight="bold" /> Approve
+                                            <Check size={13} /> Approve
                                           </button>
                                           <button
                                             disabled={isSavingInline}
                                             onClick={() =>
                                               directPushMessage(selectedConversation, message)
                                             }
-                                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px disabled:opacity-50"
                                           >
                                             <PaperPlaneTilt size={13} weight="fill" />
-                                            <span>Push to Qdrant</span>
+                                            Push to Qdrant
                                           </button>
                                         </div>
                                       </div>
@@ -1483,15 +1556,15 @@ export function AdminApp() {
         {tab === 'review' && (
           <div className="space-y-6">
             {/* Upload Document Draft box */}
-            <form onSubmit={uploadFile} className="rounded-2xl border border-dashed border-line bg-surface/70 p-5 shadow-sm">
+            <form onSubmit={uploadFile} className="rounded-xl border border-dashed border-line bg-surface/70 p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-accent/10 p-2.5 text-accent">
-                    <CloudArrowUp size={24} />
+                  <div className="rounded-lg bg-accent/10 p-2.5 text-accent">
+                    <CloudArrowUp size={22} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold">Upload Document to Review</h3>
-                    <p className="text-xs text-muted">Upload a .txt or .md file to review and chunk before pushing to Qdrant.</p>
+                    <h3 className="text-[13px] font-semibold">Upload a document for review</h3>
+                    <p className="text-[12px] text-muted">Add a .txt or .md file to the review queue.</p>
                   </div>
                 </div>
 
@@ -1501,11 +1574,12 @@ export function AdminApp() {
                     type="file"
                     accept=".txt,.md,text/plain,text/markdown"
                     required
-                    className="text-xs file:mr-2 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink hover:file:bg-raised"
+                    aria-label="Document file"
+                    className="text-[12px] file:mr-2 file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-ink hover:file:bg-raised"
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-ink transition hover:opacity-90 shadow-sm"
+                    className="rounded-lg bg-accent px-3.5 py-2 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px"
                   >
                     Upload draft
                   </button>
@@ -1513,51 +1587,57 @@ export function AdminApp() {
               </div>
             </form>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-display text-lg font-bold">Drafts Awaiting Review ({draftItems.length})</h2>
-                <p className="text-xs text-muted">
-                  Edit the canonical question and answer content. Once approved, the item will move to &quot;Ready to Push&quot;.
-                </p>
-              </div>
+            <div>
+              <h2 className="font-display text-[15px] font-semibold text-ink">
+                Drafts awaiting review
+                <span className="ml-2 font-mono text-[13px] font-normal tabular-nums text-muted">
+                  {draftItems.length}
+                </span>
+              </h2>
+              <p className="mt-1 max-w-[60ch] text-[12px] leading-relaxed text-muted">
+                Edit the question and the canonical answer. Approving moves the item to Ready to Push.
+              </p>
             </div>
 
             {draftItems.length === 0 ? (
-              <div className="rounded-2xl border border-line bg-surface p-12 text-center text-muted">
-                <FileText size={36} className="mx-auto mb-2 text-muted/60" />
-                <p className="font-medium">No items currently in review.</p>
-                <p className="mt-1 text-xs">Edit any message in the Chats tab or upload text documents above.</p>
+              <div className="rounded-xl border border-line bg-surface p-12 text-center">
+                <FileText size={28} className="mx-auto mb-2.5 text-muted/60" />
+                <p className="text-[13px] font-medium text-ink">Nothing in review</p>
+                <p className="mx-auto mt-1 max-w-[34ch] text-[12px] leading-relaxed text-muted">
+                  Edit any assistant message in the Chats tab, or upload a document above.
+                </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {draftItems.map((item) => (
-                  <article key={item.id} className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
-                    <div className="mb-3 flex items-center gap-2">
-                      <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs font-semibold uppercase text-accent">
-                        {item.source_type}
-                      </span>
-                      <span className="text-xs text-muted font-mono">ID: {item.id.slice(0, 8)}</span>
-                      <span className="ml-auto rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
-                        In Review
-                      </span>
+                  <article key={item.id} className="rounded-xl border border-line bg-surface p-5">
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[11px] text-muted">{item.source_type}</span>
+                      <span aria-hidden className="h-2.5 w-px bg-line" />
+                      <span className="font-mono text-[11px] text-muted">{item.id.slice(0, 8)}</span>
+                      <StatusPill status={item.status} label="In review" className="ml-auto" />
                     </div>
 
                     <div className="space-y-3">
                       <div>
-                        <label className="mb-1 block text-xs font-semibold text-muted">Question / Context / Title</label>
+                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+                          Question or title
+                        </label>
                         <input
                           value={item.question || ''}
                           onChange={e => {
                             const val = e.target.value
                             setKnowledge(prev => prev.map(k => (k.id === item.id ? { ...k, question: val } : k)))
                           }}
-                          className="w-full rounded-xl border border-line bg-bg px-3.5 py-2 text-sm focus:border-accent focus:outline-none font-medium"
+                          className="w-full rounded-lg border border-line bg-bg px-3.5 py-2 text-[13px] font-medium text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                           placeholder="What question does this content answer?"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-xs font-semibold text-muted">Content / Answer (Canonical)</label>
+                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">
+                          Canonical answer
+                        </label>
                         <textarea
                           value={item.content}
                           rows={5}
@@ -1565,16 +1645,16 @@ export function AdminApp() {
                             const val = e.target.value
                             setKnowledge(prev => prev.map(k => (k.id === item.id ? { ...k, content: val } : k)))
                           }}
-                          className="w-full rounded-xl border border-line bg-bg px-3.5 py-2 text-sm focus:border-accent focus:outline-none font-sans"
-                          placeholder="Review and polish the answer text to be embedded..."
+                          className="w-full rounded-lg border border-line bg-bg px-3.5 py-2 font-sans text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                          placeholder="Polish the text that will be embedded."
                         />
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/50 pt-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
                       <button
                         onClick={() => deleteItem(item)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-rose-500 hover:bg-rose-500/10"
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-rose-600 transition hover:bg-rose-500/10 active:translate-y-px"
                       >
                         <Trash size={14} /> Discard
                       </button>
@@ -1582,15 +1662,15 @@ export function AdminApp() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => updateDraftItem(item)}
-                          className="rounded-lg border border-line px-3.5 py-1.5 text-xs font-semibold text-ink transition hover:border-accent"
+                          className="rounded-lg border border-line px-3.5 py-1.5 text-[12px] font-medium text-ink transition hover:border-accent active:translate-y-px"
                         >
-                          Save Draft
+                          Save draft
                         </button>
                         <button
                           onClick={() => approveItem(item)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px"
                         >
-                          <Check size={14} weight="bold" /> Approve & Move to Ready
+                          <Check size={14} weight="bold" /> Approve
                         </button>
                       </div>
                     </div>
@@ -1603,18 +1683,19 @@ export function AdminApp() {
 
         {/* TAB 3: READY TO PUSH */}
         {tab === 'ready' && (
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-line bg-surface p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-display text-lg font-bold">Ready to Push ({approvedItems.length})</h2>
-                    <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      Approved
+                  <h2 className="font-display text-[15px] font-semibold text-ink">
+                    Ready to push
+                    <span className="ml-2 font-mono text-[13px] font-normal tabular-nums text-muted">
+                      {approvedItems.length}
                     </span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted">
-                    These approved messages are verified. You can push them one by one or push all at once in safe batches.
+                  </h2>
+                  <p className="mt-1 max-w-[52ch] text-[12px] leading-relaxed text-muted">
+                    Approved answers waiting to be embedded. Push one at a time, or push everything in
+                    safe batches.
                   </p>
                 </div>
 
@@ -1623,26 +1704,26 @@ export function AdminApp() {
                     <button
                       onClick={() => pushBatch(selectedItemIds)}
                       disabled={isPushingBatch}
-                      className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-[12px] font-medium text-ink transition hover:border-accent hover:text-accent disabled:opacity-50 active:translate-y-px"
                     >
                       <Play size={14} weight="fill" />
-                      <span>Push Selected ({selectedItemIds.length})</span>
+                      Push selected ({selectedItemIds.length})
                     </button>
                   )}
 
                   <button
                     onClick={() => pushBatch()}
                     disabled={approvedItems.length === 0 || isPushingBatch}
-                    className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 disabled:opacity-50 active:translate-y-px"
                   >
-                    <Stack size={16} weight="bold" />
-                    <span>Push All ({approvedItems.length}) to Qdrant</span>
+                    <Stack size={15} weight="bold" />
+                    Push all ({approvedItems.length})
                   </button>
                 </div>
               </div>
 
               {approvedItems.length > 5 && (
-                <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-3 text-xs text-muted">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-[12px] text-muted">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1652,86 +1733,94 @@ export function AdminApp() {
                         if (e.target.checked) setSelectedItemIds(approvedItems.map(i => i.id))
                         else setSelectedItemIds([])
                       }}
-                      className="rounded border-line"
+                      className="rounded border-line accent-[rgb(var(--c-accent))]"
                     />
                     <label htmlFor="select-all" className="cursor-pointer font-medium text-ink">
-                      Select all {approvedItems.length} items
+                      Select all {approvedItems.length}
                     </label>
                   </div>
-                  <span className="text-[11px]">Batching handles rate limits automatically</span>
+                  <span className="text-[11px]">Rate limits are handled automatically</span>
                 </div>
               )}
             </div>
 
             {approvedItems.length === 0 ? (
-              <div className="rounded-2xl border border-line bg-surface p-12 text-center text-muted">
-                <CheckCircle size={36} className="mx-auto mb-2 text-muted/60" />
-                <p className="font-medium">No approved items waiting to be pushed.</p>
-                <p className="mt-1 text-xs">
-                  Go to Chats and click &quot;Edit & Approve&quot; or check the In Review tab.
+              <div className="rounded-xl border border-line bg-surface p-12 text-center">
+                <CheckCircle size={28} className="mx-auto mb-2.5 text-muted/60" />
+                <p className="text-[13px] font-medium text-ink">Nothing queued for push</p>
+                <p className="mx-auto mt-1 max-w-[38ch] text-[12px] leading-relaxed text-muted">
+                  Approve a draft from the In Review tab, or edit and approve a message in Chats.
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {approvedItems.map(item => {
-                  const isChecked = selectedItemIds.includes(item.id)
-                  return (
-                    <article
-                      key={item.id}
-                      className={`rounded-2xl border transition p-5 shadow-sm ${
-                        isChecked ? 'border-accent bg-accent/5' : 'border border-line bg-surface'
-                      }`}
-                    >
-                      <div className="mb-3 flex items-center gap-3">
+              <div className="overflow-hidden rounded-xl border border-line bg-surface">
+                <div className="divide-y divide-line">
+                  {approvedItems.map(item => {
+                    const isChecked = selectedItemIds.includes(item.id)
+                    return (
+                      <article
+                        key={item.id}
+                        className={`flex flex-wrap items-start gap-3 px-4 py-3.5 transition-colors ${
+                          isChecked ? 'bg-accent/[0.07]' : 'hover:bg-raised/50'
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={isChecked}
+                          aria-label={`Select ${item.question || 'untitled record'}`}
                           onChange={e => {
                             if (e.target.checked) setSelectedItemIds(ids => [...ids, item.id])
                             else setSelectedItemIds(ids => ids.filter(id => id !== item.id))
                           }}
-                          className="rounded border-line text-accent"
+                          className="mt-0.5 shrink-0 rounded border-line accent-[rgb(var(--c-accent))]"
                         />
-                        <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs font-semibold uppercase text-accent">
-                          {item.source_type}
-                        </span>
-                        <span className="text-xs text-muted font-mono">ID: {item.id.slice(0, 8)}</span>
-                        <span className="ml-auto text-xs text-muted">
-                          Approved: {item.approved_at ? new Date(item.approved_at).toLocaleTimeString() : 'Recently'}
-                        </span>
-                      </div>
 
-                      <div className="mb-4">
-                        <h4 className="font-semibold text-sm text-ink mb-1">{item.question || 'Untitled'}</h4>
-                        <p className="line-clamp-3 text-xs leading-relaxed text-muted whitespace-pre-wrap">{item.content}</p>
-                      </div>
+                        <div className="min-w-0 flex-1 basis-64">
+                          <h4 className="truncate text-[13px] font-medium text-ink">
+                            {item.question || 'Untitled record'}
+                          </h4>
+                          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted">
+                            {item.content}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                            <span className="font-mono">{item.source_type}</span>
+                            <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
+                            <span className="font-mono">{item.id.slice(0, 8)}</span>
+                            <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
+                            <span className="font-mono">
+                              approved{' '}
+                              {item.approved_at ? new Date(item.approved_at).toLocaleTimeString() : 'recently'}
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/50 pt-3">
-                        <div className="flex items-center gap-2">
+                        <div className="ml-auto flex shrink-0 items-center gap-1">
                           <button
                             onClick={() => revertItem(item)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted hover:border-accent hover:text-ink"
+                            title="Send this item back to In Review"
+                            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
                           >
-                            <ArrowUUpLeft size={13} /> Revert to Review
+                            <ArrowUUpLeft size={13} /> Revert
                           </button>
                           <button
                             onClick={() => deleteItem(item)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs text-rose-500 hover:bg-rose-500/10"
+                            title="Delete this item"
+                            aria-label="Delete this item"
+                            className="rounded-lg px-2 py-1.5 text-muted transition hover:bg-raised hover:text-rose-600 active:translate-y-px"
                           >
                             <Trash size={13} />
                           </button>
+                          <button
+                            onClick={() => pushSingleItem(item)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-ink transition hover:opacity-90 active:translate-y-px"
+                          >
+                            <Play size={13} weight="fill" /> Push
+                          </button>
                         </div>
-
-                        <button
-                          onClick={() => pushSingleItem(item)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition hover:opacity-90"
-                        >
-                          <Play size={13} weight="fill" /> Push to Qdrant (Single)
-                        </button>
-                      </div>
-                    </article>
-                  )
-                })}
+                      </article>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -1739,143 +1828,82 @@ export function AdminApp() {
 
         {/* TAB 4: PIPELINE FLOW, LOGS & PUSHED RECORDS */}
         {tab === 'pipeline' && (
-          <div className="space-y-5">
-            {/* Compact metrics strip */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <div className="rounded-xl border border-line bg-surface p-3.5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    Qdrant Vectors
-                  </span>
-                  <Database size={15} className="text-accent" />
-                </div>
-                <div className="mt-1.5 flex items-baseline gap-2">
-                  <span className="font-mono text-2xl font-extrabold text-ink">
-                    {qdrantStats?.points_count !== undefined
-                      ? qdrantStats.points_count.toLocaleString()
-                      : '—'}
-                  </span>
-                  <span className="text-[10px] text-muted">
-                    {qdrantStats?.vector_size || 3072}d
-                  </span>
-                </div>
-                <p className="mt-0.5 truncate text-[10px] text-muted">
-                  {qdrantStats?.collection || 'second_brain'}
-                </p>
+          <div className="flex flex-1 flex-col gap-4">
+            {/* Metrics sit in plain layout. A box per number is noise at this density. */}
+            <div className="flex flex-wrap items-center justify-between gap-y-4 rounded-xl border border-line bg-surface px-5 py-4">
+              <div className="flex flex-wrap items-center gap-y-4">
+                <Stat
+                  label="Qdrant vectors"
+                  value={qdrantStats?.points_count !== undefined ? qdrantStats.points_count.toLocaleString() : 'unavailable'}
+                  unit={qdrantStats?.vector_size ? `${qdrantStats.vector_size}d` : undefined}
+                />
+                <Stat
+                  label="Records pushed"
+                  value={String(qdrantStats?.pushed_records_count ?? indexedItems.length)}
+                  unit="verified"
+                  tone="indexed"
+                />
+                <Stat label="Chunks stored" value={String(qdrantStats?.pushed_chunks_count ?? 0)} unit="chunks" />
+                <Stat
+                  label="Active jobs"
+                  value={String(recordCounts.active)}
+                  unit={hasActiveJobs ? 'processing' : 'idle'}
+                  tone={hasActiveJobs ? 'running' : undefined}
+                />
+                <Stat
+                  label="Failed"
+                  value={String(recordCounts.failed)}
+                  unit="all time"
+                  tone={recordCounts.failed > 0 ? 'failed' : undefined}
+                />
               </div>
-
-              <div className="rounded-xl border border-line bg-surface p-3.5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    Records Pushed
-                  </span>
-                  <CheckCircle size={15} className="text-emerald-500" />
-                </div>
-                <div className="mt-1.5 flex items-baseline gap-2">
-                  <span className="font-mono text-2xl font-extrabold text-emerald-500">
-                    {qdrantStats?.pushed_records_count ?? indexedItems.length}
-                  </span>
-                  <span className="text-[10px] text-muted">verified</span>
-                </div>
-                <p className="mt-0.5 text-[10px] text-muted">
-                  {qdrantStats?.pushed_chunks_count ?? 0} chunks stored
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-line bg-surface p-3.5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    Active Jobs
-                  </span>
-                  <Cpu size={15} className="text-accent" />
-                </div>
-                <div className="mt-1.5 flex items-baseline gap-2">
-                  <span
-                    className={`font-mono text-2xl font-extrabold ${
-                      hasActiveJobs ? 'text-sky-500' : 'text-ink'
-                    }`}
-                  >
-                    {recordCounts.active}
-                  </span>
-                  <span className="text-[10px] text-muted">
-                    {hasActiveJobs ? 'processing' : 'idle'}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-[10px] text-muted">
-                  {recordCounts.failed} failed all-time
-                </p>
-              </div>
-
               <button
                 onClick={() => {
                   fetchQdrantStats()
                   refresh()
                 }}
-                className="group flex flex-col items-start justify-between rounded-xl border border-line bg-surface p-3.5 text-left shadow-sm transition hover:border-accent/40"
+                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium text-muted transition hover:bg-raised hover:text-ink active:translate-y-px"
               >
-                <div className="flex w-full items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    Qdrant Live
-                  </span>
-                  <ArrowClockwise
-                    size={15}
-                    className={`text-muted transition group-hover:text-accent ${
-                      isRefreshingStats ? 'animate-spin' : ''
-                    }`}
-                  />
-                </div>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      hasActiveJobs ? 'animate-pulse bg-sky-500' : 'bg-emerald-500'
-                    }`}
-                  />
-                  <span className="font-mono text-sm font-bold text-ink">
-                    {hasActiveJobs ? 'Ingesting' : 'Healthy'}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-[10px] text-muted group-hover:text-accent">
-                  Click to refresh
-                </p>
+                <ArrowClockwise size={14} className={isRefreshingStats ? 'animate-spin' : ''} />
+                Refresh
               </button>
             </div>
 
             {/* RECORDS + LOGS WORKSPACE */}
-            <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-              <div className="grid min-h-0 grid-cols-1 lg:h-[calc(100dvh-23rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
+              <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)]">
                 {/* LEFT: searchable record list */}
                 <div className="flex min-h-0 flex-col border-b border-line lg:border-b-0 lg:border-r">
-                  <div className="space-y-2.5 border-b border-line p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-display text-sm font-bold">
-                        Pushed Records &amp; Jobs
-                      </h3>
-                      <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold text-accent">
-                        {filteredRecords.length}
+                  <div className="space-y-3 border-b border-line p-4">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3 className="font-display text-[13px] font-semibold text-ink">Records</h3>
+                      <span className="font-mono text-[11px] tabular-nums text-muted">
+                        {filteredRecords.length} of {pipelineRecords.length}
                       </span>
                     </div>
 
                     <div className="relative">
-                      <MagnifyingGlass
-                        size={15}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-                      />
+                      <label htmlFor="record-search" className="sr-only">
+                        Search records
+                      </label>
+                      <MagnifyingGlass size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                       <input
-                        type="text"
+                        id="record-search"
+                        type="search"
                         value={recordSearch}
                         onChange={e => setRecordSearch(e.target.value)}
-                        placeholder="Search records, IDs, content..."
-                        className="w-full rounded-lg border border-line bg-bg py-2 pl-9 pr-3 text-xs focus:border-accent focus:outline-none"
+                        placeholder="Search records"
+                        className="w-full rounded-lg border border-line bg-bg py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
                       />
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex items-center gap-0.5 rounded-lg bg-raised p-0.5">
                       {(
                         [
-                          { key: 'all', label: 'All', count: recordCounts.all, tone: '' },
-                          { key: 'active', label: 'Active', count: recordCounts.active, tone: 'sky' },
-                          { key: 'indexed', label: 'Indexed', count: recordCounts.indexed, tone: 'emerald' },
-                          { key: 'failed', label: 'Failed', count: recordCounts.failed, tone: 'rose' },
+                          { key: 'all', label: 'All', count: recordCounts.all },
+                          { key: 'active', label: 'Active', count: recordCounts.active },
+                          { key: 'indexed', label: 'Indexed', count: recordCounts.indexed },
+                          { key: 'failed', label: 'Failed', count: recordCounts.failed },
                         ] as const
                       ).map(f => {
                         const isOn = recordStatus === f.key
@@ -1883,35 +1911,28 @@ export function AdminApp() {
                           <button
                             key={f.key}
                             onClick={() => setRecordStatus(f.key)}
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
-                              isOn
-                                ? f.tone === 'sky'
-                                  ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400'
-                                  : f.tone === 'emerald'
-                                  ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                  : f.tone === 'rose'
-                                  ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                                  : 'border-accent bg-accent/10 text-accent'
-                                : 'border-line bg-surface text-muted hover:text-ink'
+                            aria-pressed={isOn}
+                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition ${
+                              isOn ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
                             }`}
                           >
-                            <span>{f.label}</span>
-                            <span className="font-mono opacity-70">{f.count}</span>
+                            {f.label}
+                            <span className="font-mono text-[11px] tabular-nums opacity-70">{f.count}</span>
                           </button>
                         )
                       })}
                     </div>
                   </div>
 
-                  <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+                  <div className="min-h-0 flex-1 divide-y divide-line overflow-y-auto max-lg:max-h-[22rem]">
                     {filteredRecords.length === 0 ? (
-                      <div className="px-3 py-10 text-center text-muted">
-                        <Stack size={30} className="mx-auto mb-2 opacity-50" />
-                        <p className="text-xs font-semibold text-ink">No matching records</p>
-                        <p className="mt-1 text-[11px]">
+                      <div className="px-5 py-14 text-center">
+                        <Stack size={26} className="mx-auto mb-2.5 text-muted/60" />
+                        <p className="text-[13px] font-medium text-ink">No matching records</p>
+                        <p className="mx-auto mt-1 max-w-[26ch] text-[12px] leading-relaxed text-muted">
                           {pipelineRecords.length === 0
-                            ? 'Push a chat or an approved item to see it here.'
-                            : 'Try a different search or status filter.'}
+                            ? 'Push a chat or an approved item and it will appear here.'
+                            : 'Try a different search term or status filter.'}
                         </p>
                       </div>
                     ) : (
@@ -1927,56 +1948,32 @@ export function AdminApp() {
                           <button
                             key={record.item.id}
                             onClick={() => setSelectedRecordId(record.item.id)}
-                            className={`w-full rounded-xl border p-3 text-left transition ${
-                              isActive
-                                ? 'border-accent bg-accent/10 shadow-sm'
-                                : 'border-transparent hover:border-line hover:bg-raised/50'
+                            className={`relative block w-full px-4 py-3 text-left transition-colors ${
+                              isActive ? 'bg-accent/[0.07]' : 'hover:bg-raised/60'
                             }`}
                           >
-                            <div className="flex items-start gap-2">
-                              <span
-                                className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                                  status === 'indexed'
-                                    ? 'bg-emerald-500'
-                                    : status === 'failed'
-                                    ? 'bg-rose-500'
-                                    : 'animate-pulse bg-sky-500'
+                            {isActive && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
+                            <div className="flex items-start justify-between gap-3">
+                              <p
+                                className={`min-w-0 flex-1 truncate text-[13px] font-medium ${
+                                  isActive ? 'text-accent' : 'text-ink'
                                 }`}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className={`line-clamp-1 text-xs font-semibold ${
-                                    isActive ? 'text-accent' : 'text-ink'
-                                  }`}
-                                >
-                                  {record.item.question || 'Untitled record'}
-                                </p>
-                                <p className="mt-0.5 line-clamp-1 text-[11px] text-muted">
-                                  {lastLog || record.item.content}
-                                </p>
-                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
-                                  <span
-                                    className={`rounded px-1.5 py-0.5 font-semibold uppercase ${
-                                      status === 'indexed'
-                                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                        : status === 'failed'
-                                        ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                                        : 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
-                                    }`}
-                                  >
-                                    {status}
-                                  </span>
-                                  <span className="rounded bg-raised px-1.5 py-0.5 uppercase">
-                                    {record.item.source_type}
-                                  </span>
-                                  <span className="font-mono">
-                                    {record.item.chunks_count || 0} ch
-                                  </span>
-                                  <span className="ml-auto font-mono">
-                                    {new Date(record.item.updated_at).toLocaleDateString()}
-                                  </span>
-                                </div>
-                              </div>
+                              >
+                                {record.item.question || 'Untitled record'}
+                              </p>
+                              <StatusPill status={status} />
+                            </div>
+                            <p className="mt-1 line-clamp-1 text-[12px] leading-relaxed text-muted">
+                              {lastLog || record.item.content}
+                            </p>
+                            <div className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+                              <span className="font-mono">{record.item.source_type}</span>
+                              <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
+                              <span className="font-mono">{record.item.chunks_count || 0} chunks</span>
+                              <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
+                              <span className="ml-auto font-mono">
+                                {new Date(record.item.updated_at).toLocaleDateString()}
+                              </span>
                             </div>
                           </button>
                         )
@@ -1985,162 +1982,133 @@ export function AdminApp() {
                   </div>
                 </div>
 
-                {/* RIGHT: stepper + logs + actions for the selected record */}
-                <div className="flex min-h-0 flex-col bg-bg">
+                {/* RIGHT: one record, one scroll column */}
+                <div className="min-h-0 overflow-y-auto bg-bg">
                   {!activeRecord ? (
-                    <div className="grid flex-1 place-items-center p-10 text-center text-muted">
+                    <div className="grid h-full place-items-center px-6 py-16 text-center">
                       <div>
-                        <Terminal size={36} className="mx-auto mb-3 opacity-50" />
-                        <p className="text-sm font-semibold text-ink">Select a record</p>
-                        <p className="mt-1 text-xs">
-                          Pick a record on the left to inspect its pipeline steps and logs.
+                        <Terminal size={28} className="mx-auto mb-3 text-muted/60" />
+                        <p className="text-[13px] font-medium text-ink">Select a record</p>
+                        <p className="mx-auto mt-1 max-w-[30ch] text-[12px] leading-relaxed text-muted">
+                          Choose a record to see its ingestion stages, vector metadata and full execution log.
                         </p>
                       </div>
                     </div>
                   ) : (
-                    <>
-                      {/* Record header + actions */}
-                      <header className="space-y-3 border-b border-line bg-surface px-4 py-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <h4 className="truncate font-display text-sm font-bold text-ink">
-                              {activeRecord.item.question || 'Untitled record'}
-                            </h4>
-                            <p className="text-[10px] font-mono text-muted">
-                              item {activeRecord.item.id.slice(0, 8)}
-                              {activeJob ? ` · job ${activeJob.id.slice(0, 8)}` : ' · no job'}
-                              {activeRecord.item.source_message_id
-                                ? ` · msg ${activeRecord.item.source_message_id.slice(0, 8)}`
-                                : ''}
-                              {' · '}
-                              {activeRecord.item.chunks_count || 0} chunks
-                              {activeRecord.jobCount > 1 ? ` · ${activeRecord.jobCount} attempts` : ''}
-                              {' · '}
-                              {new Date(activeRecord.item.updated_at).toLocaleDateString()}
-                            </p>
-                          </div>
-
-                          <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="space-y-5 p-5">
+                      {/* Title + actions */}
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-display text-[15px] font-semibold leading-snug text-ink">
+                            {activeRecord.item.question || 'Untitled record'}
+                          </h4>
+                          <div className="mt-2 flex items-center gap-2">
+                            <StatusPill status={recordStatusOf(activeRecord)} />
                             {activeRecord.item.source_message_id && (
                               <button
                                 onClick={() => {
                                   const owner = conversations.find(c =>
-                                    c.messages.some(
-                                      m => m.id === activeRecord.item.source_message_id
-                                    )
+                                    c.messages.some(m => m.id === activeRecord.item.source_message_id)
                                   )
                                   setSearchChat('')
                                   setHidePushedInChats(false)
                                   if (owner) setSelectedConversationId(owner.id)
                                   setTab('chats')
                                 }}
-                                className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:border-accent hover:text-accent"
-                                title="Open this message in the Chats tab"
+                                className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted transition hover:text-accent"
                               >
-                                <ChatCircle size={12} /> View in chat
+                                <ChatCircle size={13} /> View in chat
                               </button>
                             )}
-                            <button
-                              onClick={() => revertItem(activeRecord.item, true)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-muted transition hover:border-accent hover:text-ink"
-                              title="Send this record back to In Review"
-                            >
-                              <ArrowUUpLeft size={12} /> Revert
-                            </button>
-                            <button
-                              onClick={() => deleteItem(activeRecord.item)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-500/10"
-                              title="Delete this record and purge its Qdrant points"
-                            >
-                              <Trash size={12} /> Delete
-                            </button>
                           </div>
                         </div>
 
-                        {/* Content preview */}
-                        <p className="line-clamp-2 whitespace-pre-wrap rounded-lg border border-line/60 bg-bg px-3 py-2 text-[11px] leading-relaxed text-muted">
-                          {activeRecord.item.content}
-                        </p>
-                      </header>
-
-                      {/* Stepper */}
-                      <div className="border-b border-line bg-surface px-4 py-3">
-                        <div className="mb-2.5 flex items-center justify-between">
-                          <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted">
-                            Ingestion Pipeline
-                          </h5>
-                          {activeJob && (
-                            <span
-                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                activeJob.status === 'indexed'
-                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                  : activeJob.status === 'failed'
-                                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                                  : 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
-                              }`}
-                            >
-                              {activeJob.status}
-                            </span>
-                          )}
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            onClick={() => revertItem(activeRecord.item, true)}
+                            title="Send this record back to In Review"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-muted transition hover:border-rose-500/40 hover:text-rose-600 active:translate-y-px"
+                          >
+                            <ArrowUUpLeft size={13} /> Revert
+                          </button>
+                          <button
+                            onClick={() => deleteItem(activeRecord.item)}
+                            title="Delete this record and purge its Qdrant points"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium text-muted transition hover:border-rose-500/40 hover:text-rose-600 active:translate-y-px"
+                          >
+                            <Trash size={13} /> Delete
+                          </button>
                         </div>
+                      </div>
 
-                        <div className="grid grid-cols-5 gap-1.5">
+                      {/* Stage rail. Icons carry the step, order carries the sequence. */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                          Ingestion stages
+                        </p>
+                        <ol className="mt-3 flex items-start">
                           {PIPELINE_STEPS.map((step, idx) => {
                             const Icon = step.icon
                             const state = activeJob
                               ? getStepState(idx, activeJob.current_step, activeJob.status)
                               : 'pending'
+                            const isLast = idx === PIPELINE_STEPS.length - 1
                             return (
-                              <div
-                                key={step.id}
-                                title={step.desc}
-                                className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-center transition ${
-                                  state === 'active'
-                                    ? 'border-sky-500 bg-sky-500/10'
-                                    : state === 'done'
-                                    ? 'border-emerald-500/40 bg-emerald-500/5'
-                                    : state === 'failed'
-                                    ? 'border-rose-500/40 bg-rose-500/5'
-                                    : 'border-line/60 bg-bg opacity-60'
-                                }`}
-                              >
-                                <div
-                                  className={`grid h-6 w-6 place-items-center rounded-md ${
+                              <li key={step.id} className={`flex min-w-0 flex-col ${isLast ? 'shrink-0' : 'flex-1'}`}>
+                                <div className="flex items-center">
+                                  <span
+                                    title={step.desc}
+                                    className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${
+                                      state === 'active'
+                                        ? 'bg-accent text-accent-ink'
+                                        : state === 'done'
+                                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                        : state === 'failed'
+                                        ? 'bg-rose-500 text-white'
+                                        : 'bg-raised text-muted'
+                                    }`}
+                                  >
+                                    <Icon size={11} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
+                                  </span>
+                                  {!isLast && (
+                                    <span
+                                      aria-hidden
+                                      className={`mx-1.5 h-px min-w-3 flex-1 ${
+                                        state === 'done' ? 'bg-emerald-500/40' : 'bg-line'
+                                      }`}
+                                    />
+                                  )}
+                                </div>
+                                <span
+                                  className={`mt-2 truncate pr-3 text-[11px] font-medium ${
                                     state === 'active'
-                                      ? 'bg-sky-500 text-white'
+                                      ? 'text-accent'
                                       : state === 'done'
-                                      ? 'bg-emerald-500 text-white'
+                                      ? 'text-ink'
                                       : state === 'failed'
-                                      ? 'bg-rose-500 text-white'
-                                      : 'bg-raised text-muted'
+                                      ? 'text-rose-600 dark:text-rose-400'
+                                      : 'text-muted'
                                   }`}
                                 >
-                                  <Icon size={12} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
-                                </div>
-                                <span className="text-[9px] font-semibold leading-tight text-ink">
-                                  {step.label.replace(/^\d+\.\s*/, '')}
+                                  {step.label}
                                 </span>
-                              </div>
+                              </li>
                             )
                           })}
-                        </div>
+                        </ol>
 
                         {activeJob && activeJob.chunks_total > 0 && (
-                          <div className="mt-2.5">
-                            <div className="mb-1 flex items-center justify-between text-[10px] text-muted">
-                              <span>Chunk progress</span>
-                              <span className="font-mono">
-                                {activeJob.chunks_indexed}/{activeJob.chunks_total}
+                          <div className="mt-4">
+                            <div className="flex items-baseline justify-between text-[11px] text-muted">
+                              <span>Chunks embedded</span>
+                              <span className="font-mono tabular-nums">
+                                {activeJob.chunks_indexed} / {activeJob.chunks_total}
                               </span>
                             </div>
-                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
+                            <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-raised">
                               <div
                                 className={`h-full transition-all duration-500 ${
-                                  activeJob.status === 'failed'
-                                    ? 'bg-rose-500'
-                                    : activeJob.status === 'indexed'
-                                    ? 'bg-emerald-500'
-                                    : 'bg-accent'
+                                  TONE_FILL[toneOf(activeJob.status)]
                                 }`}
                                 style={{
                                   width: `${Math.min(
@@ -2154,109 +2122,132 @@ export function AdminApp() {
                         )}
                       </div>
 
-                      {/* Logs console */}
-                      <div className="flex min-h-0 flex-1 flex-col p-3">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <Terminal size={14} className="text-accent" />
-                            <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted">
-                              Execution Logs
-                            </h5>
-                            <span className="font-mono text-[10px] text-muted">
-                              {visibleLogs.length}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
+                      {/* Vector metadata as a scannable grid, not a separator run */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Metadata</p>
+                        <div className="mt-3">
+                          <MetaGrid
+                            entries={[
+                              { label: 'Item', value: shortId(activeRecord.item.id), mono: true },
+                              { label: 'Job', value: shortId(activeJob?.id), mono: true },
+                              { label: 'Chunks', value: String(activeRecord.item.chunks_count || 0) },
+                              { label: 'Source', value: activeRecord.item.source_type },
+                              { label: 'Attempts', value: String(activeRecord.jobCount) },
+                              { label: 'Updated', value: new Date(activeRecord.item.updated_at).toLocaleString() },
+                            ]}
+                          />
+                        </div>
+                      </div>
+
+                      {/* What actually got embedded */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                          Embedded content
+                        </p>
+                        <p className="mt-3 whitespace-pre-wrap rounded-lg border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-ink">
+                          {activeRecord.item.content}
+                        </p>
+                      </div>
+
+                      {/* Log console: aligned columns so the stream reads as a log */}
+                      <div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                            Execution log
+                          </p>
+                          <div className="flex items-center gap-1">
                             {activeJob?.logs && activeJob.logs.length > 1 && (
-                              <div className="flex gap-1">
+                              <div className="flex items-center gap-0.5 rounded-lg bg-raised p-0.5">
                                 {(
                                   [
                                     { key: 'all', label: 'All' },
-                                    { key: 'warning', label: 'Warn' },
-                                    { key: 'error', label: 'Error' },
+                                    { key: 'warning', label: 'Warnings' },
+                                    { key: 'error', label: 'Errors' },
                                   ] as const
-                                ).map(f => (
-                                  <button
-                                    key={f.key}
-                                    onClick={() => setLogLevelFilter(f.key)}
-                                    className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold transition ${
-                                      logLevelFilter === f.key
-                                        ? 'border-accent bg-accent/10 text-accent'
-                                        : 'border-line text-muted hover:text-ink'
-                                    }`}
-                                  >
-                                    {f.label}
-                                  </button>
-                                ))}
+                                ).map(f => {
+                                  const isOn = logLevelFilter === f.key
+                                  return (
+                                    <button
+                                      key={f.key}
+                                      onClick={() => setLogLevelFilter(f.key)}
+                                      aria-pressed={isOn}
+                                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${
+                                        isOn ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'
+                                      }`}
+                                    >
+                                      {f.label}
+                                    </button>
+                                  )
+                                })}
                               </div>
                             )}
                             <button
                               onClick={refresh}
-                              className="rounded-md border border-line p-1 text-muted transition hover:text-ink"
                               title="Refresh logs"
+                              aria-label="Refresh logs"
+                              className="rounded-lg p-1.5 text-muted transition hover:bg-raised hover:text-ink"
                             >
-                              <ArrowClockwise size={12} />
+                              <ArrowClockwise size={13} />
                             </button>
                           </div>
                         </div>
 
-                        <div
-                          ref={logScrollRef}
-                          className="min-h-40 flex-1 overflow-y-auto rounded-xl border border-line bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-slate-200"
-                        >
-                          {!activeJob ? (
-                            <p className="text-slate-500">
-                              This record has no ingestion job. Push it from the Ready to Push tab
-                              to generate logs.
-                            </p>
-                          ) : visibleLogs.length === 0 ? (
-                            <p className="text-slate-400">
-                              [{new Date(activeJob.created_at).toLocaleTimeString()}] [QUEUED] Job
-                              initialized. Processing chunks: {activeJob.chunks_indexed}/
-                              {activeJob.chunks_total}...
-                            </p>
-                          ) : (
-                            <div className="space-y-1">
-                              {visibleLogs.map((log, lIdx) => (
-                                <div key={lIdx} className="flex items-start gap-2">
-                                  <span className="shrink-0 text-slate-500">
-                                    [{log.timestamp}]
-                                  </span>
-                                  <span
-                                    className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                                      log.level === 'error'
-                                        ? 'bg-rose-500/20 text-rose-400'
-                                        : log.level === 'warning'
-                                        ? 'bg-amber-500/20 text-amber-400'
-                                        : 'bg-sky-500/20 text-sky-300'
-                                    }`}
+                        <div className="mt-3 overflow-hidden rounded-lg border border-[#1c2128] bg-[#0d1117]">
+                          <div
+                            ref={logScrollRef}
+                            className="max-h-80 overflow-y-auto p-3 font-mono text-[12px] leading-relaxed"
+                          >
+                            {!activeJob ? (
+                              <p className="text-slate-500">
+                                This record has no ingestion job. Push it from the Ready to Push tab to
+                                generate logs.
+                              </p>
+                            ) : visibleLogs.length === 0 ? (
+                              <p className="text-slate-400">
+                                [{new Date(activeJob.created_at).toLocaleTimeString()}] [QUEUED] Job
+                                initialized. Processing chunks: {activeJob.chunks_indexed}/
+                                {activeJob.chunks_total}...
+                              </p>
+                            ) : (
+                              <div className="space-y-1">
+                                {visibleLogs.map((log, lIdx) => (
+                                  <div
+                                    key={lIdx}
+                                    className="grid grid-cols-[auto_4.25rem_minmax(0,1fr)] items-baseline gap-x-3"
                                   >
-                                    {log.step}
-                                  </span>
-                                  <span className="flex-1 break-words text-slate-200">
-                                    {log.message}
-                                  </span>
-                                </div>
-                              ))}
-                              {logLevelFilter === 'all' && activeJob.status === 'indexed' && (
-                                <div className="flex items-center gap-1.5 pt-1 font-semibold text-emerald-400">
-                                  <CheckCircle size={13} weight="bold" />
-                                  <span>
-                                    Ingestion completed and verified in Qdrant collection!
-                                  </span>
-                                </div>
-                              )}
-                              {logLevelFilter === 'all' && activeJob.status === 'failed' && (
-                                <div className="flex items-center gap-1.5 pt-1 font-semibold text-rose-400">
-                                  <WarningCircle size={13} weight="bold" />
-                                  <span>Job failed: {activeJob.error || 'Unknown error'}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                                    <span className="whitespace-nowrap text-slate-500">{log.timestamp}</span>
+                                    <span
+                                      className={`text-[11px] font-semibold uppercase tracking-wider ${
+                                        log.level === 'error'
+                                          ? 'text-rose-400'
+                                          : log.level === 'warning'
+                                          ? 'text-amber-400'
+                                          : 'text-slate-500'
+                                      }`}
+                                    >
+                                      {log.level}
+                                    </span>
+                                    <span className="break-words text-slate-200">{log.message}</span>
+                                  </div>
+                                ))}
+                                {logLevelFilter === 'all' && activeJob.status === 'indexed' && (
+                                  <p className="flex items-center gap-1.5 pt-1 font-semibold text-emerald-400">
+                                    <CheckCircle size={13} weight="bold" />
+                                    Ingestion completed and verified in the Qdrant collection.
+                                  </p>
+                                )}
+                                {logLevelFilter === 'all' && activeJob.status === 'failed' && (
+                                  <p className="flex items-center gap-1.5 pt-1 font-semibold text-rose-400">
+                                    <WarningCircle size={13} weight="bold" />
+                                    Job failed: {activeJob.error || 'Unknown error'}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
@@ -2266,217 +2257,159 @@ export function AdminApp() {
       </main>
 
       {/* FLOATING SIDE NOTIFICATION FOR SINGLE PUSH PROGRESS */}
-      {singlePushTracker && (
+      {singlePushTracker && (() => {
+        const trackerDone = singlePushTracker.status === 'indexed'
+        const trackerFailed = singlePushTracker.status === 'failed'
+        const currentStepId = trackerDone ? 'indexed' : singlePushTracker.step
+        const currentIdx = Math.max(
+          0,
+          PIPELINE_STEPS.findIndex(s => s.id === currentStepId)
+        )
+        const trackerTone: Tone = trackerDone ? 'indexed' : trackerFailed ? 'failed' : 'running'
+        const chunkPct =
+          singlePushTracker.chunksTotal && singlePushTracker.chunksTotal > 0
+            ? Math.min(100, ((singlePushTracker.chunksIndexed || 0) / singlePushTracker.chunksTotal) * 100)
+            : null
+
+        return (
         <aside
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-line bg-surface/95 p-4 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in slide-in-from-bottom-5"
+          className="fixed bottom-5 right-5 z-50 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface/95 p-4 shadow-lift backdrop-blur-md"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-line/60 pb-2.5">
-            <div className="flex items-center gap-2">
-              {singlePushTracker.status === 'indexed' ? (
-                <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle size={18} weight="fill" />
-                </div>
-              ) : singlePushTracker.status === 'failed' ? (
-                <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
-                  <WarningCircle size={18} weight="fill" />
-                </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              {trackerDone ? (
+                <CheckCircle size={18} weight="fill" className="shrink-0 text-emerald-500" />
+              ) : trackerFailed ? (
+                <WarningCircle size={18} weight="fill" className="shrink-0 text-rose-500" />
               ) : (
-                <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-accent/15 text-accent">
-                  <CircleNotch size={18} className="animate-spin" weight="bold" />
-                </div>
+                <CircleNotch size={18} className="shrink-0 animate-spin text-accent" weight="bold" />
               )}
-
-              <div>
-                <h4 className="text-xs font-bold leading-tight text-ink">
-                  {singlePushTracker.status === 'indexed'
-                    ? 'Pushed to Qdrant!'
-                    : singlePushTracker.status === 'failed'
-                    ? 'Ingestion Failed'
-                    : 'Pushing to Qdrant...'}
+              <div className="min-w-0">
+                <h4 className="truncate text-[13px] font-semibold leading-tight text-ink">
+                  {trackerDone
+                    ? 'Indexed in Qdrant'
+                    : trackerFailed
+                    ? 'Ingestion failed'
+                    : 'Pushing to Qdrant'}
                 </h4>
-                <p className="text-[10px] text-muted">
-                  {singlePushTracker.status === 'indexed'
-                    ? 'Vectors indexed & ready'
-                    : singlePushTracker.status === 'failed'
-                    ? 'Error encountered'
-                    : 'Live pipeline processing'}
+                <p className="mt-0.5 text-[11px] text-muted">
+                  {trackerDone
+                    ? 'Vectors stored and verified'
+                    : trackerFailed
+                    ? 'Open the pipeline to inspect the error'
+                    : PIPELINE_STEPS[currentIdx]?.label || 'Queued'}
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-1">
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                  singlePushTracker.status === 'indexed'
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    : singlePushTracker.status === 'failed'
-                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                    : 'bg-accent/15 text-accent'
-                }`}
-              >
-                {singlePushTracker.status === 'indexed'
-                  ? 'Completed'
-                  : singlePushTracker.status === 'failed'
-                  ? 'Failed'
-                  : singlePushTracker.step === 'chunking'
-                  ? 'Chunking'
-                  : singlePushTracker.step === 'embedding'
-                  ? 'Embedding'
-                  : singlePushTracker.step === 'pushing_qdrant'
-                  ? 'Upserting'
-                  : 'Queued'}
-              </span>
-
-              <button
-                onClick={() => setSinglePushTracker(null)}
-                className="rounded-lg p-1 text-muted transition hover:bg-raised hover:text-ink"
-                title="Dismiss"
-              >
-                <X size={14} weight="bold" />
-              </button>
-            </div>
+            <button
+              onClick={() => setSinglePushTracker(null)}
+              className="-mr-1 -mt-1 shrink-0 rounded p-1 text-muted transition hover:bg-raised hover:text-ink"
+              title="Dismiss"
+              aria-label="Dismiss progress"
+            >
+              <X size={14} />
+            </button>
           </div>
 
-          {/* Body: Title & Progress */}
-          <div className="mt-3 space-y-2.5">
-            <p className="line-clamp-1 text-xs font-medium text-ink" title={singlePushTracker.title}>
-              "{singlePushTracker.title}"
-            </p>
+          <p className="mt-3 truncate text-[12px] text-ink" title={singlePushTracker.title}>
+            {singlePushTracker.title}
+          </p>
 
-            {/* Stepper Progress Bar */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px] font-semibold text-muted">
-                <span>
-                  {singlePushTracker.status === 'indexed'
-                    ? '5. Completed'
-                    : singlePushTracker.step === 'pushing_qdrant'
-                    ? '4. Pushing to Qdrant'
-                    : singlePushTracker.step === 'embedding'
-                    ? '3. Generating Embeddings'
-                    : singlePushTracker.step === 'chunking'
-                    ? '2. Chunking Text'
-                    : '1. Queued'}
-                </span>
-                <span className="font-mono">
-                  {singlePushTracker.status === 'indexed'
-                    ? '100%'
-                    : singlePushTracker.step === 'pushing_qdrant'
-                    ? '85%'
-                    : singlePushTracker.step === 'embedding'
-                    ? '65%'
-                    : singlePushTracker.step === 'chunking'
-                    ? '35%'
-                    : '15%'}
+          {/* Same stage rail as the pipeline tab, so the two never disagree */}
+          <ol className="mt-3.5 flex items-start">
+            {PIPELINE_STEPS.map((step, idx) => {
+              const Icon = step.icon
+              const state = getStepState(idx, currentStepId, singlePushTracker.status)
+              const isLast = idx === PIPELINE_STEPS.length - 1
+              return (
+                <li key={step.id} className={`flex min-w-0 flex-col ${isLast ? 'shrink-0' : 'flex-1'}`}>
+                  <div className="flex items-center">
+                    <span
+                      className={`grid h-4 w-4 shrink-0 place-items-center rounded-full ${
+                        state === 'active'
+                          ? 'bg-accent text-accent-ink'
+                          : state === 'done'
+                          ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                          : state === 'failed'
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-raised text-muted'
+                      }`}
+                    >
+                      <Icon size={9} weight={state === 'done' || state === 'active' ? 'bold' : 'regular'} />
+                    </span>
+                    {!isLast && (
+                      <span
+                        aria-hidden
+                        className={`mx-1 h-px min-w-2 flex-1 ${state === 'done' ? 'bg-emerald-500/40' : 'bg-line'}`}
+                      />
+                    )}
+                  </div>
+                  <span
+                    className={`mt-1.5 truncate pr-2 text-[11px] font-medium ${
+                      state === 'active' ? 'text-accent' : state === 'done' ? 'text-ink' : 'text-muted'
+                    }`}
+                  >
+                    {step.label}
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+
+          {/* Real chunk progress only. No invented percentages. */}
+          {chunkPct !== null && !trackerDone && !trackerFailed && (
+            <div className="mt-3.5">
+              <div className="flex items-baseline justify-between text-[11px] text-muted">
+                <span>Chunks embedded</span>
+                <span className="font-mono tabular-nums">
+                  {singlePushTracker.chunksIndexed || 0} / {singlePushTracker.chunksTotal}
                 </span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-raised">
+              <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-raised">
                 <div
-                  className={`h-full transition-all duration-500 ease-out ${
-                    singlePushTracker.status === 'indexed'
-                      ? 'bg-emerald-500'
-                      : singlePushTracker.status === 'failed'
-                      ? 'bg-rose-500'
-                      : 'bg-accent'
-                  }`}
-                  style={{
-                    width:
-                      singlePushTracker.status === 'indexed'
-                        ? '100%'
-                        : singlePushTracker.status === 'failed'
-                        ? '100%'
-                        : singlePushTracker.step === 'pushing_qdrant'
-                        ? '85%'
-                        : singlePushTracker.step === 'embedding'
-                        ? '65%'
-                        : singlePushTracker.step === 'chunking'
-                        ? '35%'
-                        : '15%',
-                  }}
+                  className={`h-full transition-all duration-500 ${TONE_FILL[trackerTone]}`}
+                  style={{ width: `${chunkPct}%` }}
                 />
               </div>
             </div>
+          )}
 
-            {/* Micro Stepper Pills */}
-            <div className="grid grid-cols-4 gap-1 text-center text-[10px] font-medium">
-              <div
-                className={`rounded py-0.5 ${
-                  ['chunking', 'embedding', 'pushing_qdrant', 'indexed'].includes(singlePushTracker.step) ||
-                  singlePushTracker.status === 'indexed'
-                    ? 'bg-accent/15 text-accent font-semibold'
-                    : 'bg-raised text-muted'
-                }`}
-              >
-                Chunk
-              </div>
-              <div
-                className={`rounded py-0.5 ${
-                  ['embedding', 'pushing_qdrant', 'indexed'].includes(singlePushTracker.step) ||
-                  singlePushTracker.status === 'indexed'
-                    ? 'bg-accent/15 text-accent font-semibold'
-                    : 'bg-raised text-muted'
-                }`}
-              >
-                Embed
-              </div>
-              <div
-                className={`rounded py-0.5 ${
-                  ['pushing_qdrant', 'indexed'].includes(singlePushTracker.step) ||
-                  singlePushTracker.status === 'indexed'
-                    ? 'bg-accent/15 text-accent font-semibold'
-                    : 'bg-raised text-muted'
-                }`}
-              >
-                Qdrant
-              </div>
-              <div
-                className={`rounded py-0.5 ${
-                  singlePushTracker.status === 'indexed'
-                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold'
-                    : 'bg-raised text-muted'
-                }`}
-              >
-                Done
-              </div>
-            </div>
+          {singlePushTracker.error && (
+            <p className="mt-3 break-words rounded-lg bg-rose-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-rose-600 dark:text-rose-400">
+              {singlePushTracker.error}
+            </p>
+          )}
 
-            {/* Live Message / Log text */}
-            <div className="rounded-xl bg-bg/80 px-2.5 py-1.5 text-[11px] text-muted font-sans border border-line/50">
-              <p className="truncate">
-                {singlePushTracker.lastMessage ||
-                  (singlePushTracker.status === 'indexed'
-                    ? 'Vectors stored in Qdrant successfully'
-                    : 'Processing background task...')}
-              </p>
-            </div>
+          <p className="mt-3 truncate text-[11px] text-muted">
+            {singlePushTracker.lastMessage || 'Waiting for the background worker'}
+          </p>
 
-            {/* Footer with optional pipeline link */}
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-[10px] text-muted">
-                {singlePushTracker.chunksIndexed && singlePushTracker.chunksTotal
-                  ? `${singlePushTracker.chunksIndexed}/${singlePushTracker.chunksTotal} chunks processed`
-                  : 'Single message push'}
-              </span>
-              <button
-                onClick={() => {
-                  if (singlePushTracker.knowledgeItemId) {
-                    setSelectedRecordId(singlePushTracker.knowledgeItemId)
-                    setRecordStatus('all')
-                    setRecordSearch('')
-                  }
-                  setTab('pipeline')
-                }}
-                className="text-[11px] font-semibold text-accent hover:underline flex items-center gap-1"
-              >
-                <span>View full logs</span>
-                <ArrowRight size={11} />
-              </button>
-            </div>
+          <div className="mt-3.5 flex items-center justify-between border-t border-line pt-3">
+            <span className="font-mono text-[11px] text-muted">
+              {singlePushTracker.chunksTotal
+                ? `${singlePushTracker.chunksIndexed || 0}/${singlePushTracker.chunksTotal} chunks`
+                : 'single message'}
+            </span>
+            <button
+              onClick={() => {
+                if (singlePushTracker.knowledgeItemId) {
+                  setSelectedRecordId(singlePushTracker.knowledgeItemId)
+                  setRecordStatus('all')
+                  setRecordSearch('')
+                }
+                setTab('pipeline')
+              }}
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent transition hover:underline"
+            >
+              View logs
+              <ArrowRight size={12} />
+            </button>
           </div>
         </aside>
-      )}
+        )
+      })()}
     </div>
   )
 }
