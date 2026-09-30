@@ -8,3 +8,8 @@ skills-lock.json
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Local UI preview harness (dev-only: renders AdminApp against fixture data)
+frontend/preview/
+frontend/preview.html
+frontend/preview.vite.config.ts
