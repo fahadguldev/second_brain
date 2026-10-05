@@ -70,6 +70,10 @@ export function useChat() {
   const [isThinking, setIsThinking] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const streamAbortRef = useRef<AbortController | null>(null)
+
+  // Abort any in-flight stream when the chat unmounts.
+  useEffect(() => () => streamAbortRef.current?.abort(), [])
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
@@ -114,6 +118,9 @@ export function useChat() {
     if (!trimmed || isThinking) return
     const optimisticId = makeId()
     const assistantId = makeId()
+    const controller = new AbortController()
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = controller
     setMessages(prev => [
       ...prev,
       { id: optimisticId, role: 'user', text: trimmed },
@@ -124,6 +131,7 @@ export function useChat() {
       const res = await request('/api/ask/stream', {
         method: 'POST',
         body: JSON.stringify({ question: trimmed, conversation_id: activeConversationId }),
+        signal: controller.signal,
       })
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}))
@@ -176,12 +184,18 @@ export function useChat() {
       }
       if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent)
     } catch (error) {
-      console.error('API error:', error)
-      setMessages(prev => prev.map(message => message.id === assistantId
-        ? { ...message, pending: false, error: true,
-            text: message.text || 'Could not generate a response. Please try again.' }
-        : message))
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        // Stream was superseded or the chat unmounted: drop the optimistic pair.
+        setMessages(prev => prev.filter(m => m.id !== optimisticId && m.id !== assistantId))
+      } else {
+        console.error('API error:', error)
+        setMessages(prev => prev.map(message => message.id === assistantId
+          ? { ...message, pending: false, error: true,
+              text: message.text || 'Could not generate a response. Please try again.' }
+          : message))
+      }
     } finally {
+      if (streamAbortRef.current === controller) streamAbortRef.current = null
       setIsThinking(false)
     }
   }, [activeConversationId, isThinking, refreshConversations])
