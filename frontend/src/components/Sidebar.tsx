@@ -1,8 +1,6 @@
 import {
   CaretRight,
-  Database,
   Note,
-  Stack,
   Timer,
   Plus,
   ChatCircle,
@@ -35,9 +33,10 @@ export function Sidebar({
 }) {
   const reduce = useReducedMotion()
 
+  // Only real counts. Archive totals live behind admin auth, so the public
+  // sidebar shows what it actually knows: chats loaded and turns taken.
   const items = [
-    { key: 'records', icon: Database, value: '3,058', label: 'records' },
-    { key: 'streams', icon: Stack, value: '4', label: 'streams' },
+    { key: 'chats', icon: ChatCircle, value: String(conversations.length), label: 'chats' },
     { key: 'turns', icon: Timer, value: String(turnCount), label: 'turns' },
   ]
 
@@ -82,7 +81,7 @@ export function Sidebar({
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-3 gap-2">
+      <div className="mt-6 grid grid-cols-2 gap-2">
         {items.map(item => (
           <div
             key={item.key}
