@@ -64,9 +64,7 @@ function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
         }
       }),
     ).then(results => {
-      if (!cancelled) {
-        setVideos(results.filter((video): video is VideoPreview => video !== null))
-      }
+      if (!cancelled) setVideos(results)
     })
 
     return () => {
@@ -88,9 +86,9 @@ function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
             href={video.url}
             target="_blank"
             rel="noreferrer"
-            className="group inline-flex items-center gap-2 rounded-lg border border-line/70 bg-raised/40 px-3 py-2 text-sm font-medium text-blue-600 transition-all hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+            className="group inline-flex items-center gap-2 rounded-lg border border-line/70 bg-raised/40 px-3 py-2 text-sm font-medium text-accent transition-all hover:border-accent/50 hover:bg-accent/10 hover:underline"
           >
-            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
               <Play size={11} weight="fill" />
             </span>
             <span className="line-clamp-1 flex-1">{video.title}</span>
@@ -191,7 +189,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
           isUser
             ? 'rounded-br-md bg-accent text-accent-ink'
             : msg.error
-              ? 'rounded-bl-md border border-rose-300/40 bg-rose-50/70 text-rose-900 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-200'
+              ? 'rounded-bl-md border border-danger/30 bg-danger-soft text-danger'
               : 'rounded-bl-md border border-line bg-surface shadow-soft'
         }`}
       >
