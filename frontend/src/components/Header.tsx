@@ -1,24 +1,37 @@
-import { MoonStars, Sun } from '@phosphor-icons/react'
+import { List, MoonStars, Sun } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 
 export function Header({
   isThinking,
   theme,
   onToggleTheme,
+  onMenu,
 }: {
   isThinking: boolean
   theme: 'light' | 'dark'
   onToggleTheme: () => void
+  onMenu?: () => void
 }) {
   return (
     <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-line px-4 sm:px-6">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
-          Knowledge console
-        </p>
-        <h2 className="font-display text-lg font-bold leading-tight tracking-tight">
-          Second Brain
-        </h2>
+      <div className="flex min-w-0 items-center gap-2">
+        {onMenu && (
+          <button
+            onClick={onMenu}
+            aria-label="Open conversations"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-muted transition-colors hover:text-ink lg:hidden"
+          >
+            <List size={16} weight="bold" />
+          </button>
+        )}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
+            Knowledge console
+          </p>
+          <h2 className="font-display text-lg font-bold leading-tight tracking-tight">
+            Second Brain
+          </h2>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
