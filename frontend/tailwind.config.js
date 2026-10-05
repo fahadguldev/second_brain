@@ -34,14 +34,12 @@ module.exports = {
       },
       fontFamily: {
         sans: ['Geist', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Geist', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       boxShadow: {
         soft: '0 1px 2px rgb(9 9 11 / 0.04), 0 10px 30px rgb(9 9 11 / 0.06)',
         lift: '0 2px 6px rgb(9 9 11 / 0.08), 0 24px 60px rgb(9 9 11 / 0.16)',
-      },
-      maxWidth: {
-        bubble: '46rem',
       },
     },
   },
