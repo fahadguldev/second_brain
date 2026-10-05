@@ -1,4 +1,5 @@
 import hashlib
+import os
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
@@ -6,7 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from src.admin_auth import AdminUser, require_admin
 from src.chat_database import Conversation, IngestionJob, KnowledgeChunk, KnowledgeItem, Message, get_db, utcnow
@@ -91,16 +92,26 @@ class BatchIngestResponse(BaseModel):
 def all_conversations(
     admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)
 ):
-    rows = db.scalars(select(Conversation).order_by(Conversation.updated_at.desc()).limit(200)).all()
+    rows = db.scalars(
+        select(Conversation)
+        .options(selectinload(Conversation.messages))
+        .order_by(Conversation.updated_at.desc())
+        .limit(200)
+    ).all()
+
     # Map source_message_id -> KnowledgeItem status
     knowledge_items = db.scalars(
         select(KnowledgeItem).where(KnowledgeItem.source_message_id.isnot(None))
     ).all()
-    
+
     # Identify items that have verified chunks in Qdrant
-    pushed_item_ids = set(
-        db.scalars(select(KnowledgeChunk.knowledge_item_id).distinct()).all()
-    )
+    pushed_item_ids = set()
+    try:
+        pushed_item_ids = set(
+            db.scalars(select(KnowledgeChunk.knowledge_item_id).distinct()).all()
+        )
+    except Exception as exc:
+        print(f"Notice: unable to query KnowledgeChunk points: {exc}")
 
     # Build knowledge_map prioritizing indexed items > approved > draft
     knowledge_map = {}
@@ -117,8 +128,14 @@ def all_conversations(
             elif existing.status != "indexed" and k.status == "approved":
                 knowledge_map[msg_id] = k
 
-        if is_item_indexed and k.content:
+        if is_item_indexed and k.content and k.content.strip():
             content_pushed_map[k.content.strip()] = k
+
+    def resolve_item(msg):
+        item = knowledge_map.get(msg.id)
+        if not item and msg.content and msg.content.strip():
+            item = content_pushed_map.get(msg.content.strip())
+        return item
 
     return [{
         "id": row.id,
@@ -129,28 +146,14 @@ def all_conversations(
         "messages": [{
             "id": msg.id,
             "role": msg.role,
-            "text": msg.content,
-            "pipeline_status": (
-                (knowledge_map.get(msg.id) or content_pushed_map.get(msg.content.strip())).status
-                if (msg.id in knowledge_map or (msg.content and msg.content.strip() in content_pushed_map))
-                else None
+            "text": msg.content or "",
+            "pipeline_status": resolve_item(msg).status if resolve_item(msg) else None,
+            "is_pushed": bool(
+                resolve_item(msg)
+                and (resolve_item(msg).status == "indexed" or resolve_item(msg).id in pushed_item_ids)
             ),
-            "is_pushed": (
-                (
-                    (knowledge_map.get(msg.id) and (
-                        knowledge_map[msg.id].status == "indexed" or knowledge_map[msg.id].id in pushed_item_ids
-                    ))
-                    or (msg.content and msg.content.strip() in content_pushed_map)
-                )
-                if (msg.id in knowledge_map or (msg.content and msg.content.strip() in content_pushed_map))
-                else False
-            ),
-            "knowledge_item_id": (
-                (knowledge_map.get(msg.id) or content_pushed_map.get(msg.content.strip())).id
-                if (msg.id in knowledge_map or (msg.content and msg.content.strip() in content_pushed_map))
-                else None
-            ),
-        } for msg in row.messages],
+            "knowledge_item_id": resolve_item(msg).id if resolve_item(msg) else None,
+        } for msg in (row.messages or [])],
     } for row in rows]
 
 
@@ -534,30 +537,47 @@ async def upload_text(
     file: UploadFile = File(...),
     admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db),
 ):
-    filename = file.filename or "upload.txt"
+    filename = os.path.basename(file.filename or "upload.txt")
     if not filename.lower().endswith((".txt", ".md")):
         raise HTTPException(status_code=415, detail="Only .txt and .md files are supported")
     raw = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds the 2 MB limit")
     try:
-        content = raw.decode("utf-8").strip()
+        content = raw.decode("utf-8-sig").strip()
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="File must be UTF-8 encoded") from exc
+    # Remove null bytes to ensure compatibility with PostgreSQL text fields
+    content = content.replace("\x00", "")
     if not content:
         raise HTTPException(status_code=422, detail="File is empty")
     digest = hashlib.sha256(raw).hexdigest()
+    # 36-character prefix guarantees compatibility with existing VARCHAR(36) column definitions in production PostgreSQL
+    digest_key = digest[:36]
     duplicate = db.scalar(select(KnowledgeItem).where(
-        KnowledgeItem.source_type == "upload", KnowledgeItem.source_message_id == digest
+        KnowledgeItem.source_type == "upload",
+        KnowledgeItem.source_message_id.in_([digest, digest_key]),
     ))
     if duplicate:
         raise HTTPException(status_code=409, detail="This file has already been uploaded")
+    now = utcnow()
     item = KnowledgeItem(
-        id=str(uuid4()), source_type="upload", source_message_id=digest,
-        question=filename[:160], content=content, created_by=admin.email,
+        id=str(uuid4()),
+        source_type="upload",
+        source_message_id=digest_key,
+        question=filename[:160],
+        content=content,
+        status="draft",
+        created_by=admin.email,
+        created_at=now,
+        updated_at=now,
     )
-    db.add(item)
-    db.commit()
+    try:
+        db.add(item)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error saving uploaded file: {str(exc)}") from exc
     return item
 
 

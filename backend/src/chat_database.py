@@ -71,7 +71,7 @@ class KnowledgeItem(Base):
     __tablename__ = "knowledge_items"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     source_type: Mapped[str] = mapped_column(String(32))
-    source_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     question: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
@@ -111,9 +111,20 @@ def init_chat_database() -> None:
     with engine.connect() as conn:
         try:
             if engine.dialect.name == "postgresql":
-                conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS current_step VARCHAR(32) DEFAULT 'queued'"))
-                conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS logs JSONB DEFAULT '[]'::jsonb"))
-                conn.commit()
+                try:
+                    conn.execute(text("ALTER TABLE knowledge_items ALTER COLUMN source_message_id TYPE VARCHAR(64)"))
+                    conn.commit()
+                except Exception as exc:
+                    print(f"Migration notice for source_message_id: {exc}")
+                    conn.rollback()
+
+                try:
+                    conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS current_step VARCHAR(32) DEFAULT 'queued'"))
+                    conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS logs JSONB DEFAULT '[]'::jsonb"))
+                    conn.commit()
+                except Exception as exc:
+                    print(f"Migration notice for ingestion_jobs: {exc}")
+                    conn.rollback()
             elif engine.dialect.name == "sqlite":
                 res = conn.execute(text("PRAGMA table_info(ingestion_jobs)")).fetchall()
                 cols = [r[1] for r in res]

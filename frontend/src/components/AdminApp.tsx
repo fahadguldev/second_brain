@@ -344,6 +344,7 @@ export function AdminApp() {
   const [error, setError] = useState('')
   const [isPushingBatch, setIsPushingBatch] = useState(false)
   const [isRefreshingStats, setIsRefreshingStats] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   // Inline editing state for Chats tab
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -964,6 +965,7 @@ export function AdminApp() {
     if (!input.files?.[0]) return
     const body = new FormData()
     body.append('file', input.files[0])
+    setIsUploading(true)
     try {
       await api('/uploads', { method: 'POST', body })
       form.reset()
@@ -972,6 +974,8 @@ export function AdminApp() {
       setTab('review')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -1575,8 +1579,9 @@ export function AdminApp() {
                     aria-label="Document file"
                     className="text-[12px] file:mr-2 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[12px] file:font-medium file:text-ink hover:file:bg-raised"
                   />
-                  <button type="submit" className="ctl ctl-md ctl-primary">
-                    Upload draft
+                  <button type="submit" disabled={isUploading} className="ctl ctl-md ctl-primary disabled:opacity-50">
+                    {isUploading && <CircleNotch size={14} className="animate-spin" />}
+                    {isUploading ? 'Uploading...' : 'Upload draft'}
                   </button>
                 </div>
               </div>

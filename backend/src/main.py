@@ -1,8 +1,12 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from src.config import settings
 from src.chat_database import init_chat_database
 from src.database import ensure_collection
+
+logger = logging.getLogger("second_brain")
 
 app = FastAPI(
     title="Second Brain AI API",
@@ -20,6 +24,26 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*", "X-Visitor-Id"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled error on {request.method} {request.url.path}: {exc}")
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        normalized_origin = origin.rstrip("/")
+        allowed = {o.rstrip("/") for o in settings.CORS_ORIGINS}
+        if normalized_origin in allowed or "*" in settings.CORS_ORIGINS:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+            headers["Access-Control-Allow-Methods"] = "*"
+            headers["Access-Control-Allow-Headers"] = "*"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+        headers=headers,
+    )
 
 @app.on_event("startup")
 def initialize_database():
