@@ -374,6 +374,12 @@ export function AdminApp() {
         ...init,
         headers: { Authorization: `Bearer ${session.access_token}`, ...init?.headers },
       })
+      if (response.status === 401) {
+        // Token expired or revoked: drop the session so the login screen
+        // comes back instead of failing every admin call behind a banner.
+        await supabase.auth.signOut().catch(() => undefined)
+        throw new Error('Session expired. Please sign in again.')
+      }
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.detail || 'Admin request failed')
       return body
@@ -514,13 +520,13 @@ export function AdminApp() {
 
   // Real-time polling when jobs are executing
   useEffect(() => {
-    if (!hasActiveJobs) {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
-      return
+    // Clear any previous interval first: this effect re-runs when `api`
+    // changes identity, and overwriting the ref would orphan the old timer.
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
     }
+    if (!hasActiveJobs) return
 
     pollIntervalRef.current = window.setInterval(async () => {
       try {
@@ -900,11 +906,13 @@ export function AdminApp() {
   const pushSingleItem = async (item: KnowledgeItem) => {
     setError('')
     try {
+      const titleText = (item.question || item.content).slice(0, 45)
+      const title = titleText.length >= 45 ? `${titleText}...` : titleText
       setSinglePushTracker({
         jobId: 'pending',
         knowledgeItemId: item.id,
         messageId: item.source_message_id || undefined,
-        title: (item.question || item.content).slice(0, 45) + '...',
+        title,
         step: 'queued',
         status: 'queued',
         lastMessage: 'Starting ingestion...',
@@ -914,7 +922,7 @@ export function AdminApp() {
         jobId: job.id,
         knowledgeItemId: item.id,
         messageId: item.source_message_id || undefined,
-        title: (item.question || item.content).slice(0, 45) + '...',
+        title,
         step: job.current_step || 'queued',
         status: job.status || 'queued',
         chunksIndexed: job.chunks_indexed,
@@ -1057,9 +1065,9 @@ export function AdminApp() {
   }, [visibleLogs.length, selectedRecordId])
 
   // Helper for pipeline step visual state
+  const stepOrder = ['queued', 'chunking', 'embedding', 'pushing_qdrant', 'indexed']
   const getStepState = (stepIndex: number, currentStep?: string, jobStatus?: string) => {
     if (jobStatus === 'failed') {
-      const stepOrder = ['queued', 'chunking', 'embedding', 'pushing_qdrant', 'indexed']
       const failIndex = stepOrder.indexOf(currentStep || 'queued')
       if (stepIndex < failIndex) return 'done'
       if (stepIndex === failIndex) return 'failed'
@@ -1067,7 +1075,6 @@ export function AdminApp() {
     }
     if (jobStatus === 'indexed') return 'done'
 
-    const stepOrder = ['queued', 'chunking', 'embedding', 'pushing_qdrant', 'indexed']
     const activeIndex = stepOrder.indexOf(currentStep || 'queued')
     if (stepIndex < activeIndex) return 'done'
     if (stepIndex === activeIndex) return 'active'
