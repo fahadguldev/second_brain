@@ -147,6 +147,7 @@ def process_single_job(db: Session, job_id: str) -> bool:
 
         if all_topics_set:
             _append_job_log(db, job, "classifying", f"Classified with topics: {', '.join(sorted(all_topics_set))} (domain: {domain})")
+        item.topics = sorted(all_topics_set)
 
         old_rows = db.query(KnowledgeChunk).filter(KnowledgeChunk.knowledge_item_id == item.id).all()
         
