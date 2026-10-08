@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from src.chat_database import IngestionJob, KnowledgeChunk, KnowledgeItem, SessionLocal, utcnow
 from src.database import delete_points, insert_points
 from src.embeddings import embedding_generator
+from src.classifier import classify_topics, determine_domain, detect_language
 
 
 def chunk_text(text: str, size: int = 1500, overlap: int = 200) -> list[str]:
@@ -95,16 +96,45 @@ def process_single_job(db: Session, job_id: str) -> bool:
         
         points = []
         rows = []
+        all_topics_set = set()
+        filename_hint = item.question if item.source_type == "upload" else ""
+        question_hint = item.question if item.source_type != "upload" else None
+
         for position, (text, vector) in enumerate(zip(chunks, vectors)):
             digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
             point_id = str(uuid5(NAMESPACE_URL, f"knowledge:{item.id}:{position}:{digest}"))
+
+            # Classify topics, domain, and language using brain_config.yaml
+            topics = classify_topics(text=text, question=question_hint, filename=filename_hint)
+            all_topics_set.update(topics)
+            domain = determine_domain(topics)
+            lang = detect_language(text)
+
+            payload = {
+                "text": text,
+                "metadata": {
+                    "source": {
+                        "type": item.source_type,
+                        "knowledge_item_id": item.id,
+                        "file_name": filename_hint or None,
+                    },
+                    "approved_at": item.approved_at.isoformat() if item.approved_at else None,
+                    "classification": {
+                        "domain": domain,
+                        "topics": topics,
+                    },
+                    "topics": topics,
+                    "domain": domain,
+                    "language": lang,
+                    "chunk_index": position,
+                    "chunks_total": len(chunks),
+                },
+            }
+
             points.append(PointStruct(
                 id=point_id,
                 vector=vector,
-                payload={"text": text, "metadata": {
-                    "source": {"type": item.source_type, "knowledge_item_id": item.id},
-                    "approved_at": item.approved_at.isoformat() if item.approved_at else None,
-                }},
+                payload=payload,
             ))
             rows.append(KnowledgeChunk(
                 id=str(uuid4()),
@@ -114,6 +144,9 @@ def process_single_job(db: Session, job_id: str) -> bool:
                 content_hash=digest,
                 text=text,
             ))
+
+        if all_topics_set:
+            _append_job_log(db, job, "classifying", f"Classified with topics: {', '.join(sorted(all_topics_set))} (domain: {domain})")
 
         old_rows = db.query(KnowledgeChunk).filter(KnowledgeChunk.knowledge_item_id == item.id).all()
         
