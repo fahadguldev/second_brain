@@ -490,6 +490,10 @@ def push_messages(
                 created_by=admin.email,
             )
             db.add(item)
+            # autoflush is off and there is no ORM relationship between
+            # KnowledgeItem and IngestionJob, so SQLAlchemy may insert the
+            # job first and hit the FK constraint. Flush the parent row now.
+            db.flush()
         else:
             item.question = entry.question
             item.content = entry.content.strip()
