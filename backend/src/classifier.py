@@ -138,13 +138,18 @@ def classify_topics(
 
 def determine_domain(topics: List[str]) -> str:
     """
-    Determines whether the record domain is 'personal' or 'professional' based on matched topics.
+    Determines a record domain by majority vote across matched categories.
+
+    Topic classification returns one entry per matched category. Each category
+    belongs to a domain through ``personal_topics``; unmatched category names
+    are treated as professional. A tie uses the configured professional
+    default.
     """
     personal = get_personal_topics()
-    for t in topics:
-        if t.lower() in personal:
-            return "personal"
-    return "professional"
+    normalized_topics = {topic.lower() for topic in topics}
+    personal_count = len(normalized_topics & personal)
+    professional_count = len(normalized_topics) - personal_count
+    return "personal" if personal_count > professional_count else "professional"
 
 
 def detect_language(text: Optional[str]) -> Optional[str]:
@@ -251,4 +256,3 @@ def remove_category(name: str) -> bool:
         save_brain_config(cfg)
         return True
     return False
-
