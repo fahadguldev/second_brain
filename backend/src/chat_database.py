@@ -71,6 +71,7 @@ class KnowledgeItem(Base):
     __tablename__ = "knowledge_items"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     source_type: Mapped[str] = mapped_column(String(32))
+    topics: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     source_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     question: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str] = mapped_column(Text)
@@ -121,6 +122,13 @@ def init_chat_database() -> None:
                     conn.rollback()
 
                 try:
+                    conn.execute(text("ALTER TABLE knowledge_items ADD COLUMN IF NOT EXISTS topics JSONB"))
+                    conn.commit()
+                except Exception as exc:
+                    print(f"Migration notice for knowledge_items.topics: {exc}")
+                    conn.rollback()
+
+                try:
                     conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS current_step VARCHAR(32) DEFAULT 'queued'"))
                     conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS logs JSONB DEFAULT '[]'::jsonb"))
                     conn.commit()
@@ -134,6 +142,11 @@ def init_chat_database() -> None:
                     conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN current_step VARCHAR(32) DEFAULT 'queued'"))
                 if "logs" not in cols:
                     conn.execute(text("ALTER TABLE ingestion_jobs ADD COLUMN logs JSON DEFAULT '[]'"))
+                knowledge_cols = [
+                    row[1] for row in conn.execute(text("PRAGMA table_info(knowledge_items)")).fetchall()
+                ]
+                if "topics" not in knowledge_cols:
+                    conn.execute(text("ALTER TABLE knowledge_items ADD COLUMN topics JSON"))
                 conn.commit()
         except Exception as exc:
             print(f"Migration check notice: {exc}")
