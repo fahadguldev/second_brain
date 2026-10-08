@@ -66,7 +66,8 @@ class Settings:
         dict.fromkeys(_parse_cors_origins(os.getenv("CORS_ORIGINS")) + list(_DEFAULT_CORS_ORIGINS))
     )
 
-    # App
+    # App & Brain Config
+    BRAIN_CONFIG_PATH: str = os.getenv("BRAIN_CONFIG_PATH", "brain_config.yaml")
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
