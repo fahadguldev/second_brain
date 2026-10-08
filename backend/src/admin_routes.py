@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -13,6 +13,7 @@ from src.admin_auth import AdminUser, require_admin
 from src.chat_database import Conversation, IngestionJob, KnowledgeChunk, KnowledgeItem, Message, get_db, utcnow
 from src.database import delete_points, get_collection_stats
 from src.ingestion import run_batch_ingestion_jobs, run_ingestion_job
+from src.classifier import determine_domain
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
@@ -42,6 +43,8 @@ class KnowledgeResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     source_type: str
+    topics: Optional[list[str]] = None
+    domain: str = "professional"
     source_message_id: Optional[str]
     question: Optional[str]
     content: str
@@ -51,6 +54,12 @@ class KnowledgeResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     approved_at: Optional[datetime]
+
+    @model_validator(mode="after")
+    def set_domain(self) -> "KnowledgeResponse":
+        """Expose the domain derived from the item's classified topics."""
+        self.domain = determine_domain(self.topics or [])
+        return self
 
 
 class JobResponse(BaseModel):
@@ -630,4 +639,3 @@ def delete_category(
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"message": f"Category '{name}' deleted successfully"}
-
