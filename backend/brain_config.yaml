@@ -1,0 +1,150 @@
+version: '1.0'
+creator:
+  name: Fahad Gul
+  handles:
+  - fahadgul.dev
+  - fahadgul
+  - '@fahadgul'
+  bio: Software Engineer & Cloud Architect
+persona:
+  name: Fahad Gul
+  languages:
+    primary: english
+    secondary:
+    - hinglish
+    - urdu
+  tone: direct, concise, authentic, technical
+  default_domain: professional
+  avoid_words:
+  - bhai
+  - bro
+tone_guidelines:
+- Short and punchy; 1-2 sentences by default
+- English base with natural Romanized Hinglish code-switching
+- Answer directly first, then provide minimal necessary explanation
+- Authentic personal knowledge and opinions over generic AI answers
+- Factual grounding strictly overrides communication style
+- Natural forms of address without forced slang
+- Never invent credentials, personal history, or experiences
+chunk_size: 1500
+chunk_overlap: 200
+personal_topics:
+- family
+- marriage
+- studies
+- future
+- personal
+- life
+topics:
+  python:
+  - python
+  - fastapi
+  - pydantic
+  - pytest
+  - asyncio
+  cloud:
+  - cloud
+  - aws
+  - serverless
+  - ec2
+  - s3
+  - lambda
+  - amazon web
+  cybersecurity:
+  - cyber
+  - security
+  - hacking
+  - ethical
+  - infosec
+  ai:
+  - artificial intelligence
+  - machine learning
+  - llm
+  - rag
+  - embeddings
+  - neural
+  - qdrant
+  - gemini
+  datascience:
+  - data science
+  - datascience
+  - analytics
+  - pandas
+  - numpy
+  webdev:
+  - web dev
+  - webdev
+  - frontend
+  - backend
+  - html
+  - css
+  - react
+  - nextjs
+  - javascript
+  - typescript
+  devops:
+  - devops
+  - docker
+  - kubernetes
+  - ci/cd
+  - container
+  database:
+  - database
+  - sql
+  - mysql
+  - postgres
+  - postgresql
+  - sqlite
+  career:
+  - career
+  - salary
+  - job
+  - jobs
+  - scope
+  - market
+  - hiring
+  - interview
+  family:
+  - family
+  - parents
+  - father
+  - mother
+  - brother
+  - sister
+  - siblings
+  - home
+  - relatives
+  marriage:
+  - marriage
+  - wedding
+  - nikkah
+  - relationship
+  - spouse
+  - wife
+  - life partner
+  - settle down
+  studies:
+  - study
+  - studies
+  - exam
+  - exams
+  - course
+  - courses
+  - learning
+  - university
+  - degree
+  - academics
+  - cgpa
+  - gpa
+  - semester
+  future:
+  - future
+  - goals
+  - plan
+  - plans
+  - vision
+  - 5-year
+  - ambition
+  - roadmap
+  - target
+  - aspiration
