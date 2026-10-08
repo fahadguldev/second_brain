@@ -31,8 +31,17 @@ Full-stack interactive web application for chatting with an AI Second Brain grou
 
 ### A. Create Virtual Environment & Install Dependencies
 
-From the repository root:
+From the repository root, enter the `backend/` directory and set up your virtual environment using either **`uv`** (fastest) or standard **`python3` / `pip`**:
 
+#### Option 1: Using `uv` (Recommended)
+```bash
+cd backend
+uv venv .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
+
+#### Option 2: Using standard `python` & `pip`
 ```bash
 cd backend
 python3 -m venv .venv
