@@ -20,9 +20,11 @@ import {
   PaperPlaneTilt,
   PencilSimple,
   Play,
+  Plus,
   SignOut,
   Sparkle,
   Stack,
+  Tag,
   Terminal,
   Trash,
   WarningCircle,
@@ -88,6 +90,12 @@ export type SinglePushTracker = {
   chunksTotal?: number
   lastMessage?: string
   error?: string
+}
+
+export type CategoryItem = {
+  name: string
+  keywords: string[]
+  domain: 'personal' | 'professional' | string
 }
 
 type AdminMessage = {
@@ -225,7 +233,7 @@ function MetaGrid({ entries }: { entries: { label: string; value: string; mono?:
   )
 }
 
-type AdminTab = 'chats' | 'review' | 'ready' | 'pipeline'
+type AdminTab = 'chats' | 'review' | 'ready' | 'pipeline' | 'categories'
 
 function shortId(id?: string | null) {
   return id ? id.slice(0, 8) : 'none'
@@ -354,7 +362,15 @@ export function AdminApp() {
   const [pushingMessageId, setPushingMessageId] = useState<string | null>(null)
   const [isPushingConversation, setIsPushingConversation] = useState(false)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
-  const logScrollRef = useRef<HTMLDivElement | null>(null)
+  // Category taxonomy management state
+  const [categories, setCategories] = useState<CategoryItem[]>([])
+  const [categoryName, setCategoryName] = useState('')
+  const [categoryDomain, setCategoryDomain] = useState<'personal' | 'professional'>('professional')
+  const [categoryKeywords, setCategoryKeywords] = useState('')
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+  const [categorySaving, setCategorySaving] = useState(false)
+  const [categorySearch, setCategorySearch] = useState('')
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
 
   const pollIntervalRef = useRef<number | null>(null)
 
@@ -403,20 +419,77 @@ export function AdminApp() {
   const refresh = useCallback(async () => {
     if (!session) return
     try {
-      const [chatRows, knowledgeRows, jobRows, stats] = await Promise.all([
+      const [chatRows, knowledgeRows, jobRows, catRows, stats] = await Promise.all([
         api('/conversations'),
         api('/knowledge'),
         api('/jobs'),
+        api('/categories').catch(() => []),
         api('/qdrant/stats').catch(() => null),
       ])
       setConversations(chatRows)
       setKnowledge(knowledgeRows)
       setJobs(jobRows)
+      if (Array.isArray(catRows)) setCategories(catRows)
       if (stats) setQdrantStats(stats)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load admin data')
     }
   }, [api, session])
+
+  const handleSaveCategory = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!categoryName.trim()) return
+    setCategorySaving(true)
+    try {
+      const kws = categoryKeywords
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean)
+      const updated = await api('/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: categoryName.trim().toLowerCase(),
+          keywords: kws,
+          domain: categoryDomain,
+        }),
+      })
+      setCategories(prev => {
+        const filtered = prev.filter(c => c.name !== updated.name)
+        return [...filtered, updated].sort((a, b) => a.name.localeCompare(b.name))
+      })
+      setActionNotice(`Category '${updated.name}' saved successfully`)
+      setTimeout(() => setActionNotice(null), 3000)
+      setIsCategoryModalOpen(false)
+      setCategoryName('')
+      setCategoryKeywords('')
+      setEditingCategory(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save category')
+    } finally {
+      setCategorySaving(false)
+    }
+  }
+
+  const handleDeleteCategory = async (name: string) => {
+    if (!window.confirm(`Are you sure you want to delete category '${name}'?`)) return
+    try {
+      await api(`/categories/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      setCategories(prev => prev.filter(c => c.name !== name))
+      setActionNotice(`Category '${name}' deleted`)
+      setTimeout(() => setActionNotice(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete category')
+    }
+  }
+
+  const handleEditCategory = (cat: CategoryItem) => {
+    setCategoryName(cat.name)
+    setCategoryDomain(cat.domain === 'personal' ? 'personal' : 'professional')
+    setCategoryKeywords(cat.keywords.join(', '))
+    setEditingCategory(cat.name)
+    setIsCategoryModalOpen(true)
+  }
 
   useEffect(() => {
     refresh()
@@ -426,6 +499,14 @@ export function AdminApp() {
   const draftItems = useMemo(() => knowledge.filter(k => k.status === 'draft'), [knowledge])
   const approvedItems = useMemo(() => knowledge.filter(k => k.status === 'approved'), [knowledge])
   const indexedItems = useMemo(() => knowledge.filter(k => k.status === 'indexed'), [knowledge])
+
+  const filteredCategories = useMemo(() => {
+    if (!categorySearch.trim()) return categories
+    const q = categorySearch.toLowerCase().trim()
+    return categories.filter(
+      c => c.name.toLowerCase().includes(q) || c.keywords.some(k => k.toLowerCase().includes(q))
+    )
+  }, [categories, categorySearch])
 
   // Set of message IDs that have been pushed to Qdrant
   const pushedMessageIds = useMemo(() => {
@@ -1081,11 +1162,12 @@ export function AdminApp() {
     return 'pending'
   }
 
-  const navItems: { id: AdminTab; label: string; icon: typeof Cpu; count: number }[] = [
+  const navItems: { id: AdminTab; label: string; icon: any; count: number }[] = [
     { id: 'chats', label: 'Chats', icon: ChatCircle, count: conversationsToDisplay.length },
     { id: 'review', label: 'In Review', icon: FileText, count: draftItems.length },
     { id: 'ready', label: 'Ready to Push', icon: CloudArrowUp, count: approvedItems.length },
     { id: 'pipeline', label: 'Pipeline', icon: Cpu, count: indexedItems.length },
+    { id: 'categories', label: 'Categories', icon: Tag, count: categories.length },
   ]
 
   if (loading) return <div className="grid min-h-[100dvh] place-items-center bg-bg text-muted">Loading admin portal...</div>
@@ -2247,7 +2329,239 @@ export function AdminApp() {
             </div>
           </div>
         )}
+
+        {/* TAB 5: CATEGORIES & TAXONOMY MANAGER */}
+        {tab === 'categories' && (
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-8">
+            {/* Top Toolbar / Overview */}
+            <div className="flex shrink-0 flex-col gap-4 rounded-lg border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-[16px] font-semibold tracking-tight text-ink">Categories & Keyword Taxonomy</h2>
+                <p className="mt-1 text-[13px] text-muted">
+                  Topic keywords configured in <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-accent">brain_config.yaml</code>. Uploads and chat items are automatically tagged with these categories.
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <div className="relative min-w-[220px]">
+                  <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    type="text"
+                    value={categorySearch}
+                    onChange={e => setCategorySearch(e.target.value)}
+                    placeholder="Search categories or keywords..."
+                    className="h-9 w-full rounded-lg border border-line bg-bg pl-8.5 pr-3 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setCategoryName('')
+                    setCategoryDomain('professional')
+                    setCategoryKeywords('')
+                    setEditingCategory(null)
+                    setIsCategoryModalOpen(true)
+                  }}
+                  className="ctl ctl-primary flex shrink-0 items-center gap-1.5"
+                >
+                  <Plus size={15} weight="bold" />
+                  <span>Add Category</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metric counters */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-line bg-surface p-4">
+                <p className="eyebrow">Total Categories</p>
+                <p className="mt-1 font-mono text-[22px] font-semibold text-ink">{categories.length}</p>
+              </div>
+              <div className="rounded-lg border border-line bg-surface p-4">
+                <p className="eyebrow">Personal Categories</p>
+                <p className="mt-1 font-mono text-[22px] font-semibold text-accent">
+                  {categories.filter(c => c.domain === 'personal').length}
+                </p>
+              </div>
+              <div className="rounded-lg border border-line bg-surface p-4">
+                <p className="eyebrow">Professional Categories</p>
+                <p className="mt-1 font-mono text-[22px] font-semibold text-ok">
+                  {categories.filter(c => c.domain === 'professional').length}
+                </p>
+              </div>
+            </div>
+
+            {/* Categories Grid */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredCategories.map(cat => {
+                const isPersonal = cat.domain === 'personal'
+                return (
+                  <div
+                    key={cat.name}
+                    className="flex flex-col justify-between rounded-lg border border-line bg-surface p-4.5 transition-all hover:border-line-active"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-raised text-accent">
+                            <Tag size={15} weight="bold" />
+                          </span>
+                          <h3 className="font-mono text-[14.5px] font-semibold capitalize text-ink">
+                            {cat.name}
+                          </h3>
+                        </div>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider ${
+                            isPersonal
+                              ? 'bg-accent-soft text-accent'
+                              : 'bg-ok-soft text-ok'
+                          }`}
+                        >
+                          {cat.domain}
+                        </span>
+                      </div>
+
+                      {/* Keywords list */}
+                      <div className="mt-3.5">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
+                          Trigger Keywords ({cat.keywords.length})
+                        </p>
+                        <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
+                          {cat.keywords.map((kw, i) => (
+                            <span
+                              key={i}
+                              className="rounded bg-raised px-2 py-0.5 font-mono text-[11.5px] text-ink"
+                            >
+                              {kw}
+                            </span>
+                          ))}
+                          {cat.keywords.length === 0 && (
+                            <span className="text-[12px] italic text-muted">No keywords assigned</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mt-4 flex items-center justify-end gap-2 border-t border-line/60 pt-3">
+                      <button
+                        onClick={() => handleEditCategory(cat)}
+                        className="ctl ctl-ghost ctl-sm flex items-center gap-1 text-[12px]"
+                      >
+                        <PencilSimple size={14} />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(cat.name)}
+                        className="ctl ctl-ghost ctl-sm ctl-danger flex items-center gap-1 text-[12px]"
+                      >
+                        <Trash size={14} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+              {filteredCategories.length === 0 && (
+                <div className="col-span-full rounded-lg border border-dashed border-line bg-surface/50 p-8 text-center text-muted">
+                  No categories found matching &quot;{categorySearch}&quot;.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* Category Add/Edit Modal */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <h3 className="text-[15px] font-semibold text-ink">
+                {editingCategory ? `Edit Category: ${editingCategory}` : 'New Category'}
+              </h3>
+              <button
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="ctl ctl-icon ctl-ghost"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCategory} className="mt-4 space-y-4">
+              <div>
+                <label className="eyebrow mb-1 block">Category Name</label>
+                <input
+                  type="text"
+                  value={categoryName}
+                  onChange={e => setCategoryName(e.target.value)}
+                  placeholder="e.g. fitness, investing, family"
+                  className="h-9 w-full rounded-lg border border-line bg-bg px-3 font-mono text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                  required
+                  disabled={!!editingCategory}
+                />
+              </div>
+
+              <div>
+                <label className="eyebrow mb-1 block">Domain Classification</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryDomain('professional')}
+                    className={`flex items-center justify-center rounded-lg border py-2 text-[12.5px] font-medium transition-colors ${
+                      categoryDomain === 'professional'
+                        ? 'border-accent bg-accent-soft text-accent'
+                        : 'border-line bg-bg text-muted hover:text-ink'
+                    }`}
+                  >
+                    Professional
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryDomain('personal')}
+                    className={`flex items-center justify-center rounded-lg border py-2 text-[12.5px] font-medium transition-colors ${
+                      categoryDomain === 'personal'
+                        ? 'border-accent bg-accent-soft text-accent'
+                        : 'border-line bg-bg text-muted hover:text-ink'
+                    }`}
+                  >
+                    Personal
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="eyebrow mb-1 block">Trigger Keywords (comma-separated)</label>
+                <textarea
+                  value={categoryKeywords}
+                  onChange={e => setCategoryKeywords(e.target.value)}
+                  placeholder="e.g. workout, gym, health, fitness, running, cardio"
+                  rows={3}
+                  className="w-full rounded-lg border border-line bg-bg p-3 font-mono text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                />
+                <p className="mt-1 text-[11.5px] text-muted">
+                  Content matching any of these keywords will be tagged with this category.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="ctl ctl-ghost"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={categorySaving || !categoryName.trim()}
+                  className="ctl ctl-primary flex items-center gap-1.5"
+                >
+                  {categorySaving ? <CircleNotch size={14} className="animate-spin" /> : <Check size={14} />}
+                  <span>{editingCategory ? 'Update Category' : 'Create Category'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* FLOATING SIDE NOTIFICATION FOR SINGLE PUSH PROGRESS */}
       {singlePushTracker && (() => {
