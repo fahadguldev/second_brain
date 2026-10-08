@@ -584,3 +584,46 @@ async def upload_text(
 @router.get("/jobs", response_model=list[JobResponse])
 def list_jobs(admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)):
     return db.scalars(select(IngestionJob).order_by(IngestionJob.created_at.desc()).limit(100)).all()
+
+
+class CategoryPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    keywords: list[str] = Field(default_factory=list)
+    domain: str = Field(default="professional")
+
+
+class CategoryResponse(BaseModel):
+    name: str
+    keywords: list[str]
+    domain: str
+
+
+@router.get("/categories", response_model=list[CategoryResponse])
+def get_categories(admin: AdminUser = Depends(require_admin)):
+    from src.classifier import list_categories
+    return list_categories()
+
+
+@router.post("/categories", response_model=CategoryResponse)
+def create_or_update_category(
+    payload: CategoryPayload,
+    admin: AdminUser = Depends(require_admin),
+):
+    from src.classifier import save_category
+    clean_name = payload.name.strip().lower()
+    if not clean_name:
+        raise HTTPException(status_code=422, detail="Category name cannot be empty")
+    return save_category(name=clean_name, keywords=payload.keywords, domain=payload.domain)
+
+
+@router.delete("/categories/{name}")
+def delete_category(
+    name: str,
+    admin: AdminUser = Depends(require_admin),
+):
+    from src.classifier import remove_category
+    success = remove_category(name)
+    if not success:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return {"message": f"Category '{name}' deleted successfully"}
+
