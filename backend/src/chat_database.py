@@ -79,12 +79,14 @@ class KnowledgeItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    jobs: Mapped[list["IngestionJob"]] = relationship(back_populates="item")
 
 
 class IngestionJob(Base):
     __tablename__ = "ingestion_jobs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     knowledge_item_id: Mapped[str] = mapped_column(ForeignKey("knowledge_items.id"), index=True)
+    item: Mapped["KnowledgeItem"] = relationship(back_populates="jobs")
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     current_step: Mapped[str | None] = mapped_column(String(32), default="queued", nullable=True)
     chunks_total: Mapped[int] = mapped_column(default=0)

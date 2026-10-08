@@ -362,6 +362,7 @@ export function AdminApp() {
   const [pushingMessageId, setPushingMessageId] = useState<string | null>(null)
   const [isPushingConversation, setIsPushingConversation] = useState(false)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  const logScrollRef = useRef<HTMLDivElement | null>(null)
   // Category taxonomy management state
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [categoryName, setCategoryName] = useState('')
