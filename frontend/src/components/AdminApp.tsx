@@ -39,6 +39,8 @@ export type KnowledgeItem = {
   question?: string
   content: string
   source_type: string
+  topics?: string[] | null
+  domain?: 'personal' | 'professional' | string
   source_message_id?: string
   status: 'draft' | 'approved' | 'indexed' | string
   chunks_count?: number
@@ -192,6 +194,33 @@ function StatusPill({
       )}
       {label ?? TONE_LABEL[tone]}
     </span>
+  )
+}
+
+function ClassificationBadges({
+  topics,
+  domain,
+}: {
+  topics?: string[] | null
+  domain?: string
+}) {
+  if (!topics?.length) {
+    return <span className="text-[11px] text-muted">Not classified yet</span>
+  }
+
+  const label = domain === 'personal' ? 'Personal' : 'Professional'
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent">
+        {label}
+      </span>
+      {topics.map(topic => (
+        <span key={topic} className="rounded-full bg-raised px-2 py-0.5 text-[11px] text-muted">
+          {topic}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -1708,6 +1737,7 @@ export function AdminApp() {
                       <span className="font-mono text-[11px] text-muted">{item.id.slice(0, 8)}</span>
                       <StatusPill status={item.status} label="In review" className="ml-auto" />
                     </div>
+                    <ClassificationBadges topics={item.topics} domain={item.domain} />
 
                     <div className="space-y-3">
                       <div>
@@ -1869,6 +1899,9 @@ export function AdminApp() {
                               approved{' '}
                               {item.approved_at ? new Date(item.approved_at).toLocaleTimeString() : 'recently'}
                             </span>
+                          </div>
+                          <div className="mt-2.5">
+                            <ClassificationBadges topics={item.topics} domain={item.domain} />
                           </div>
                         </div>
 
@@ -2054,6 +2087,12 @@ export function AdminApp() {
                                 {new Date(record.item.updated_at).toLocaleDateString()}
                               </span>
                             </div>
+                            <div className="mt-2.5">
+                              <ClassificationBadges
+                                topics={record.item.topics}
+                                domain={record.item.domain}
+                              />
+                            </div>
                           </button>
                         )
                       })
@@ -2212,6 +2251,16 @@ export function AdminApp() {
                               { label: 'Attempts', value: String(activeRecord.jobCount) },
                               { label: 'Updated', value: new Date(activeRecord.item.updated_at).toLocaleString() },
                             ]}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="eyebrow">Classification</p>
+                        <div className="mt-3.5">
+                          <ClassificationBadges
+                            topics={activeRecord.item.topics}
+                            domain={activeRecord.item.domain}
                           />
                         </div>
                       </div>
