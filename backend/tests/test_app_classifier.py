@@ -54,6 +54,13 @@ def test_classify_topics_personal_future():
     assert determine_domain(topics) == "personal"
 
 
+def test_domain_uses_majority_of_matched_categories():
+    """The domain follows the larger category group for a mixed chunk."""
+    assert determine_domain(["projects", "python", "future"]) == "professional"
+    assert determine_domain(["family", "future", "projects"]) == "personal"
+    assert determine_domain(["family", "projects"]) == "professional"
+
+
 def test_filename_contributes_to_topics():
     """Filename alone triggers category match even if body text is vague."""
     topics = classify_topics(text="Some generic overview text.", filename="aws_cloud_guide.md")
@@ -95,4 +102,3 @@ def test_category_crud_operations():
     # Verify it is removed
     after = list_categories()
     assert "fitness_test" not in [c["name"] for c in after]
-
