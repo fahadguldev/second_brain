@@ -114,6 +114,13 @@ topics:
   - siblings
   - home
   - relatives
+  - bhai
+  - ma
+  - mery
+  - ghar
+  - hamari
+  - shadi
+  - wife
   marriage:
   - marriage
   - wedding
@@ -148,3 +155,13 @@ topics:
   - roadmap
   - target
   - aspiration
+  projects:
+  - javascript
+  - js
+  - npm
+  - run dev
+  - ci/cd
+  - devops
+  - docker
+  - readme
+  - md
