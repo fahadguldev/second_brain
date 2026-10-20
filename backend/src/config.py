@@ -55,7 +55,21 @@ class Settings:
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-2")
     EMBEDDING_DIMENSION: int = int(os.getenv("EMBEDDING_DIMENSION", "3072"))
     GENERATION_MODEL: str = os.getenv("GENERATION_MODEL", "gemini-3.1-flash-lite")
-    RAG_SCORE_THRESHOLD: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.65"))
+    # Final (post-rerank) minimum score for a retrieved chunk to count as evidence.
+    RAG_SCORE_THRESHOLD: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.55"))
+    # Which Qdrant payload source types are searchable at query time, comma-separated.
+    # "all" disables the filter. With tag routing enabled the whole corpus is
+    # searchable; source trust is enforced by boosts + the noise slot cap instead.
+    RAG_SOURCES: str = os.getenv("RAG_SOURCES", "all")
+    # Route retrieval by intent: classify the query against the brain_config topic
+    # lexicon and filter candidates to matching topics first.
+    RAG_USE_TAGS: bool = os.getenv("RAG_USE_TAGS", "True").lower() == "true"
+    # If the tag-filtered search returns fewer hits than this, retry without tags.
+    RAG_TAG_MIN_HITS: int = int(os.getenv("RAG_TAG_MIN_HITS", "2"))
+    # Max legacy/social points allowed in the final top-k; remaining slots go to
+    # curated knowledge. Keeps curated docs from being crowded out while still
+    # letting legacy topics (e.g. university advice in DMs) reach the context.
+    RAG_NOISE_MAX: int = int(os.getenv("RAG_NOISE_MAX", "4"))
 
     # Rate limiting
     RATE_LIMIT_PER_MIN: int = int(os.getenv("RATE_LIMIT_PER_MIN", "60"))

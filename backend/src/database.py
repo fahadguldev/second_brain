@@ -4,7 +4,9 @@ from qdrant_client.models import (
     VectorParams,
     Filter,
     FieldCondition,
+    MatchAny,
     MatchValue,
+    PayloadSchemaType,
 )
 from src.config import settings
 
@@ -45,6 +47,27 @@ def ensure_collection(vector_size: int = 3072) -> bool:
             raise RuntimeError(
                 f"Qdrant vector size is {actual_size}; expected {vector_size}"
             )
+
+        # Source-filtered retrieval needs a keyword index on metadata.source.type.
+        try:
+            client.create_payload_index(
+                collection_name=get_collection_name(),
+                field_name="metadata.source.type",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+        except Exception as idx_exc:
+            print(f"Notice: could not ensure payload index on metadata.source.type: {idx_exc}")
+
+        # Tag-routed retrieval filters on metadata.topics (array of keywords).
+        try:
+            client.create_payload_index(
+                collection_name=get_collection_name(),
+                field_name="metadata.topics",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+        except Exception as idx_exc:
+            print(f"Notice: could not ensure payload index on metadata.topics: {idx_exc}")
+
         return True
 
     except Exception as e:
@@ -133,6 +156,9 @@ def search_points(
     query_vector: list[float],
     top_k: int = 5,
     filter_dict: dict | None = None,
+    source_types: list[str] | None = None,
+    topics: list[str] | None = None,
+    score_threshold: float | None = None,
 ) -> list[dict]:
     """Search for similar vectors."""
 
@@ -142,6 +168,23 @@ def search_points(
         return []
 
     must_filters = []
+
+    if source_types:
+        must_filters.append(
+            FieldCondition(
+                key="metadata.source.type",
+                match=MatchAny(any=source_types),
+            )
+        )
+
+    # Tag routing: keep only chunks tagged with at least one matched topic.
+    if topics:
+        must_filters.append(
+            FieldCondition(
+                key="metadata.topics",
+                match=MatchAny(any=topics),
+            )
+        )
 
     if filter_dict:
         for key, value in filter_dict.items():
@@ -158,6 +201,9 @@ def search_points(
         else None
     )
 
+    if score_threshold is None:
+        score_threshold = settings.RAG_SCORE_THRESHOLD
+
     try:
         results = client.query_points(
             collection_name=get_collection_name(),
@@ -165,7 +211,7 @@ def search_points(
             limit=top_k,
             query_filter=query_filter,
             with_payload=True,
-            score_threshold=settings.RAG_SCORE_THRESHOLD,
+            score_threshold=score_threshold,
         )
 
         return [

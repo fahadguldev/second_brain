@@ -1,0 +1,1212 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\wasee\\Desktop\\fahad\\second_brain_app\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [7888] using StatReload
+INFO:     Started server process [2248]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Unhandled error on POST /api/admin/knowledge/push-messages: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: INSERT INTO ingestion_jobs (id, knowledge_item_id, status, current_step, chunks_total, chunks_indexed, logs, error, created_at, finished_at) VALUES (%(id)s::VARCHAR, %(knowledge_item_id)s::VARCHAR, %(status)s::VARCHAR, %(current_step)s::VARCHAR, %(chunks_total)s::INTEGER, %(chunks_indexed)s::INTEGER, %(logs)s::JSON, %(error)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE, %(finished_at)s::TIMESTAMP WITH TIME ZONE)]
+[parameters: [{'id': 'fdb22aa6-59f5-4c28-8e82-fd1e6db52693', 'knowledge_item_id': '3c2e0bd2-518a-4430-aedb-b8673027ab15', 'status': 'queued', 'current_step': 'queued', 'chunks_total': 0, 'chunks_indexed': 0, 'logs': Json([{'timestamp': '11:42:25', 'step':  ... (99 chars)), 'error': None, 'created_at': datetime.datetime(2026, 10, 15, 11, 42, 26, 488463, tzinfo=datetime.timezone.utc), 'finished_at': None}, {'id': '18177e40-ccdc-4463-b642-1536f6e772a9', 'knowledge_item_id': 'c3dc1f03-474f-4b3e-897e-73b513e0849c', 'status': 'queued', 'current_step': 'queued', 'chunks_total': 0, 'chunks_indexed': 0, 'logs': Json([{'timestamp': '11:42:25', 'step':  ... (99 chars)), 'error': None, 'created_at': datetime.datetime(2026, 10, 15, 11, 42, 26, 488468, tzinfo=datetime.timezone.utc), 'finished_at': None}]]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1912, in _exec_single_context
+    self.dialect.do_executemany(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1177, in do_executemany
+    cursor.executemany(statement, parameters)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 148, in executemany
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicatePreparedStatement: prepared statement "_pg3_0" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 354, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\admin_routes.py", line 653, in push_messages
+    db.commit()
+    ~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2095, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<sqlalchemy generated _go() wrapper for sqlalchemy.orm.session.SessionTransaction.commit>", line 2, in commit
+    return target(fn, self, _to_root=_to_root)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1330, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<sqlalchemy generated _go() wrapper for sqlalchemy.orm.session.SessionTransaction._prepare_impl>", line 2, in _prepare_impl
+    return target(fn, self)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1304, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4536, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "<sqlalchemy generated warned() wrapper for sqlalchemy.orm.session.Session._flush>", line 2, in _flush
+    return target(fn, self, objects=objects)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\util\deprecations.py", line 281, in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4679, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 166, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4640, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 467, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 643, in execute
+    util.preloaded.orm_persistence._save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 92, in _save_obj
+    _emit_insert_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        insert,
+        ^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1052, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1912, in _exec_single_context
+    self.dialect.do_executemany(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1177, in do_executemany
+    cursor.executemany(statement, parameters)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 148, in executemany
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: INSERT INTO ingestion_jobs (id, knowledge_item_id, status, current_step, chunks_total, chunks_indexed, logs, error, created_at, finished_at) VALUES (%(id)s::VARCHAR, %(knowledge_item_id)s::VARCHAR, %(status)s::VARCHAR, %(current_step)s::VARCHAR, %(chunks_total)s::INTEGER, %(chunks_indexed)s::INTEGER, %(logs)s::JSON, %(error)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE, %(finished_at)s::TIMESTAMP WITH TIME ZONE)]
+[parameters: [{'id': 'fdb22aa6-59f5-4c28-8e82-fd1e6db52693', 'knowledge_item_id': '3c2e0bd2-518a-4430-aedb-b8673027ab15', 'status': 'queued', 'current_step': 'queued', 'chunks_total': 0, 'chunks_indexed': 0, 'logs': Json([{'timestamp': '11:42:25', 'step':  ... (99 chars)), 'error': None, 'created_at': datetime.datetime(2026, 10, 15, 11, 42, 26, 488463, tzinfo=datetime.timezone.utc), 'finished_at': None}, {'id': '18177e40-ccdc-4463-b642-1536f6e772a9', 'knowledge_item_id': 'c3dc1f03-474f-4b3e-897e-73b513e0849c', 'status': 'queued', 'current_step': 'queued', 'chunks_total': 0, 'chunks_indexed': 0, 'logs': Json([{'timestamp': '11:42:25', 'step':  ... (99 chars)), 'error': None, 'created_at': datetime.datetime(2026, 10, 15, 11, 42, 26, 488468, tzinfo=datetime.timezone.utc), 'finished_at': None}]]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1912, in _exec_single_context
+    self.dialect.do_executemany(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1177, in do_executemany
+    cursor.executemany(statement, parameters)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 148, in executemany
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicatePreparedStatement: prepared statement "_pg3_0" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\uvicorn\protocols\http\h11_impl.py", line 411, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 354, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\admin_routes.py", line 653, in push_messages
+    db.commit()
+    ~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2095, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<sqlalchemy generated _go() wrapper for sqlalchemy.orm.session.SessionTransaction.commit>", line 2, in commit
+    return target(fn, self, _to_root=_to_root)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1330, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<sqlalchemy generated _go() wrapper for sqlalchemy.orm.session.SessionTransaction._prepare_impl>", line 2, in _prepare_impl
+    return target(fn, self)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1304, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4536, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "<sqlalchemy generated warned() wrapper for sqlalchemy.orm.session.Session._flush>", line 2, in _flush
+    return target(fn, self, objects=objects)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\util\deprecations.py", line 281, in warned
+    return fn(*args, **kwargs)  # type: ignore[no-any-return]
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4679, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 166, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4640, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 467, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py", line 643, in execute
+    util.preloaded.orm_persistence._save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 92, in _save_obj
+    _emit_insert_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        insert,
+        ^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\persistence.py", line 1052, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1912, in _exec_single_context
+    self.dialect.do_executemany(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1177, in do_executemany
+    cursor.executemany(statement, parameters)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 148, in executemany
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: INSERT INTO ingestion_jobs (id, knowledge_item_id, status, current_step, chunks_total, chunks_indexed, logs, error, created_at, finished_at) VALUES (%(id)s::VARCHAR, %(knowledge_item_id)s::VARCHAR, %(status)s::VARCHAR, %(current_step)s::VARCHAR, %(chunks_total)s::INTEGER, %(chunks_indexed)s::INTEGER, %(logs)s::JSON, %(error)s::VARCHAR, %(created_at)s::TIMESTAMP WITH TIME ZONE, %(finished_at)s::TIMESTAMP WITH TIME ZONE)]
+[parameters: [{'id': 'fdb22aa6-59f5-4c28-8e82-fd1e6db52693', 'knowledge_item_id': '3c2e0bd2-518a-4430-aedb-b8673027ab15', 'status': 'queued', 'current_step': 'queued', 'chunks_total': 0, 'chunks_indexed': 0, 'logs': Json([{'timestamp': '11:42:25', 'step':  ... (99 chars)), 'error': None, 'created_at': datetime.datetime(2026, 10, 15, 11, 42, 26, 488463, tzinfo=datetime.timezone.utc), 'finished_at': None}, {'id': '18177e40-ccdc-4463-b642-1536f6e772a9', 'knowledge_item_id': 'c3dc1f03-474f-4b3e-897e-73b513e0849c', 'status': 'queued', 'current_step': 'queued', 'chunks_total': 0, 'chunks_indexed': 0, 'logs': Json([{'timestamp': '11:42:25', 'step':  ... (99 chars)), 'error': None, 'created_at': datetime.datetime(2026, 10, 15, 11, 42, 26, 488468, tzinfo=datetime.timezone.utc), 'finished_at': None}]]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:  StatReload detected changes in 'src\config.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2248]
+INFO:     Started server process [10852]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Direct use of automatic function calling (AFC) in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream. Similarly, direct use of AFC in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message.
+WARNING:  StatReload detected changes in 'src\config.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [10852]
+INFO:     Started server process [28556]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\qdrant_client\qdrant_remote.py:292: UserWarning: Failed to obtain server version. Unable to check client-server compatibility. Set check_compatibility=False to skip version check.
+  show_warning(
+WARNING:  StatReload detected changes in 'backfill_topics.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [28556]
+INFO:     Started server process [15580]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src\rag.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [15580]
+INFO:     Started server process [19544]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src\rag.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [19544]
+INFO:     Started server process [23224]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src\rag.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23224]
+INFO:     Started server process [23220]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src\admin_routes.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23220]
+INFO:     Started server process [12428]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Direct use of automatic function calling (AFC) in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream. Similarly, direct use of AFC in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message.
+Unhandled error on POST /api/ask/stream: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: SELECT conversations.id, conversations.user_id, conversations.title, conversations.created_at, conversations.updated_at 
+FROM conversations 
+WHERE conversations.id = %(id_1)s::VARCHAR AND conversations.user_id = %(user_id_1)s::VARCHAR]
+[parameters: {'id_1': '35d01565-d910-4c09-8482-32304cd56da0', 'user_id_1': '2eeb67c2-0130-4594-8e89-144f2021edd4'}]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicatePreparedStatement: prepared statement "_pg3_0" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 354, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\routes.py", line 164, in ask_question_stream
+    conversation = owned_conversation(db, req.conversation_id, user.id)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\chat_service.py", line 54, in owned_conversation
+    conversation = db.scalar(select(Conversation).where(
+        Conversation.id == conversation_id, Conversation.user_id == user_id
+    ))
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2534, in scalar
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        **kw,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2363, in _execute_internal
+    compile_state_cls.orm_execute_statement(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 316, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: SELECT conversations.id, conversations.user_id, conversations.title, conversations.created_at, conversations.updated_at 
+FROM conversations 
+WHERE conversations.id = %(id_1)s::VARCHAR AND conversations.user_id = %(user_id_1)s::VARCHAR]
+[parameters: {'id_1': '35d01565-d910-4c09-8482-32304cd56da0', 'user_id_1': '2eeb67c2-0130-4594-8e89-144f2021edd4'}]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicatePreparedStatement: prepared statement "_pg3_0" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\uvicorn\protocols\http\h11_impl.py", line 411, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 354, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\routes.py", line 164, in ask_question_stream
+    conversation = owned_conversation(db, req.conversation_id, user.id)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\chat_service.py", line 54, in owned_conversation
+    conversation = db.scalar(select(Conversation).where(
+        Conversation.id == conversation_id, Conversation.user_id == user_id
+    ))
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2534, in scalar
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        **kw,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2363, in _execute_internal
+    compile_state_cls.orm_execute_statement(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 316, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: SELECT conversations.id, conversations.user_id, conversations.title, conversations.created_at, conversations.updated_at 
+FROM conversations 
+WHERE conversations.id = %(id_1)s::VARCHAR AND conversations.user_id = %(user_id_1)s::VARCHAR]
+[parameters: {'id_1': '35d01565-d910-4c09-8482-32304cd56da0', 'user_id_1': '2eeb67c2-0130-4594-8e89-144f2021edd4'}]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+Unhandled error on POST /api/ask/stream: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: SELECT users.id, users.created_at, users.last_seen_at 
+FROM users 
+WHERE users.id = %(pk_1)s::VARCHAR]
+[parameters: {'pk_1': '2eeb67c2-0130-4594-8e89-144f2021edd4'}]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicatePreparedStatement: prepared statement "_pg3_0" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 481, in app
+    solved_result = await solve_dependencies(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 676, in solve_dependencies
+    solved = await run_in_threadpool(call, **solved_result.values)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\chat_service.py", line 37, in get_current_user
+    user = db.get(User, user_id)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 3845, in get
+    return self._get_impl(
+           ~~~~~~~~~~~~~~^
+        entity,
+        ^^^^^^^
+    ...<7 lines>...
+        bind_arguments=bind_arguments,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4032, in _get_impl
+    return db_load_fn(
+        self,
+    ...<5 lines>...
+        bind_arguments=bind_arguments,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 702, in _load_on_pk_identity
+    session.execute(
+    ~~~~~~~~~~~~~~~^
+        q,
+        ^^
+    ...<2 lines>...
+        bind_arguments=bind_arguments,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2473, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2363, in _execute_internal
+    compile_state_cls.orm_execute_statement(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 316, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: SELECT users.id, users.created_at, users.last_seen_at 
+FROM users 
+WHERE users.id = %(pk_1)s::VARCHAR]
+[parameters: {'pk_1': '2eeb67c2-0130-4594-8e89-144f2021edd4'}]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.DuplicatePreparedStatement: prepared statement "_pg3_0" already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\uvicorn\protocols\http\h11_impl.py", line 411, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\routing.py", line 676, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\routing.py", line 481, in app
+    solved_result = await solve_dependencies(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 676, in solve_dependencies
+    solved = await run_in_threadpool(call, **solved_result.values)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\starlette\concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2706, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1100, in run
+    result = context.run(func, *args)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\src\chat_service.py", line 37, in get_current_user
+    user = db.get(User, user_id)
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 3845, in get
+    return self._get_impl(
+           ~~~~~~~~~~~~~~^
+        entity,
+        ^^^^^^^
+    ...<7 lines>...
+        bind_arguments=bind_arguments,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 4032, in _get_impl
+    return db_load_fn(
+        self,
+    ...<5 lines>...
+        bind_arguments=bind_arguments,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 702, in _load_on_pk_identity
+    session.execute(
+    ~~~~~~~~~~~~~~~^
+        q,
+        ^^
+    ...<2 lines>...
+        bind_arguments=bind_arguments,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2473, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2363, in _execute_internal
+    compile_state_cls.orm_execute_statement(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 316, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wasee\Desktop\fahad\second_brain_app\backend\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicatePreparedStatement) prepared statement "_pg3_0" already exists
+[SQL: SELECT users.id, users.created_at, users.last_seen_at 
+FROM users 
+WHERE users.id = %(pk_1)s::VARCHAR]
+[parameters: {'pk_1': '2eeb67c2-0130-4594-8e89-144f2021edd4'}]
+(Background on this error at: https://sqlalche.me/e/21/f405)

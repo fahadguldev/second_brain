@@ -262,7 +262,15 @@ function MetaGrid({ entries }: { entries: { label: string; value: string; mono?:
   )
 }
 
-type AdminTab = 'chats' | 'review' | 'ready' | 'pipeline' | 'categories'
+type AdminTab = 'chats' | 'review' | 'ready' | 'pipeline' | 'categories' | 'legacy'
+
+export type LegacyPoint = {
+  id: string
+  text: string
+  source_type: string
+  topics: string[]
+  domain?: string | null
+}
 
 function shortId(id?: string | null) {
   return id ? id.slice(0, 8) : 'none'
@@ -402,6 +410,18 @@ export function AdminApp() {
   const [categorySearch, setCategorySearch] = useState('')
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
 
+  const [legacyPoints, setLegacyPoints] = useState<LegacyPoint[]>([])
+  const [legacyTotal, setLegacyTotal] = useState(0)
+  const [legacyNextOffset, setLegacyNextOffset] = useState<string | null>(null)
+  const [legacyLoading, setLegacyLoading] = useState(false)
+  const [legacyLoaded, setLegacyLoaded] = useState(false)
+  const [legacySourceFilter, setLegacySourceFilter] = useState('')
+  const [legacyTopicFilter, setLegacyTopicFilter] = useState('')
+  const [legacyEditingId, setLegacyEditingId] = useState<string | null>(null)
+  const [legacyTopicsDraft, setLegacyTopicsDraft] = useState('')
+  const [legacyDomainDraft, setLegacyDomainDraft] = useState('professional')
+  const [legacySavingId, setLegacySavingId] = useState<string | null>(null)
+
   const pollIntervalRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -519,6 +539,63 @@ export function AdminApp() {
     setCategoryKeywords(cat.keywords.join(', '))
     setEditingCategory(cat.name)
     setIsCategoryModalOpen(true)
+  }
+
+  const fetchLegacyPoints = useCallback(
+    async (opts: { reset: boolean; sourceType?: string; topic?: string }) => {
+      if (!session) return
+      setLegacyLoading(true)
+      try {
+        const params = new URLSearchParams({ limit: '24' })
+        const source = opts.sourceType ?? legacySourceFilter
+        const topic = opts.topic ?? legacyTopicFilter
+        if (source) params.set('source_type', source)
+        if (topic.trim()) params.set('topic', topic.trim().toLowerCase())
+        if (!opts.reset && legacyNextOffset) params.set('offset', legacyNextOffset)
+        const body = await api(`/legacy-points?${params.toString()}`)
+        setLegacyPoints(prev => (opts.reset ? body.points : [...prev, ...body.points]))
+        setLegacyTotal(body.total_matched)
+        setLegacyNextOffset(body.next_offset ?? null)
+        setLegacyLoaded(true)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load legacy points')
+      } finally {
+        setLegacyLoading(false)
+      }
+    },
+    [api, session, legacyNextOffset, legacySourceFilter, legacyTopicFilter]
+  )
+
+  // Load the legacy corpus the first time the tab opens
+  useEffect(() => {
+    if (tab === 'legacy' && !legacyLoaded && !legacyLoading) {
+      fetchLegacyPoints({ reset: true })
+    }
+  }, [tab, legacyLoaded, legacyLoading, fetchLegacyPoints])
+
+  const handleSaveLegacyTags = async (pointId: string) => {
+    setLegacySavingId(pointId)
+    try {
+      const topics = legacyTopicsDraft
+        .split(',')
+        .map(t => t.trim().toLowerCase())
+        .filter(Boolean)
+      const updated = await api(`/legacy-points/${encodeURIComponent(pointId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topics, domain: legacyDomainDraft }),
+      })
+      setLegacyPoints(prev =>
+        prev.map(p => (p.id === pointId ? { ...p, topics: updated.topics, domain: updated.domain } : p))
+      )
+      setLegacyEditingId(null)
+      setActionNotice(`Point ${pointId} re-tagged`)
+      setTimeout(() => setActionNotice(null), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save tags')
+    } finally {
+      setLegacySavingId(null)
+    }
   }
 
   useEffect(() => {
@@ -961,6 +1038,76 @@ export function AdminApp() {
     }
   }
 
+  // Which message ids a single delete removes: a user turn takes its answer with it.
+  const messageDeleteTargets = (conv: AdminConversation, message: AdminMessage): string[] => {
+    if (message.role !== 'user') return [message.id]
+    const idx = conv.messages.findIndex(m => m.id === message.id)
+    if (idx < 0) return [message.id]
+    const next = conv.messages[idx + 1]
+    return next && next.role === 'assistant' ? [message.id, next.id] : [message.id]
+  }
+
+  // Delete one message (and its answer when a user question is removed).
+  const deleteChatMessage = async (conv: AdminConversation, message: AdminMessage) => {
+    const targetIds = messageDeleteTargets(conv, message)
+    const willDeleteAnswer = targetIds.length > 1
+    const ok = confirm(
+      willDeleteAnswer
+        ? 'Delete this message and its answer? Anything pushed from this turn will also be removed from Qdrant.'
+        : 'Delete this answer? If it was pushed to Qdrant it will be removed from the brain memory.'
+    )
+    if (!ok) return
+
+    setError('')
+    try {
+      const res = await api(`/messages/${message.id}`, { method: 'DELETE' })
+      setEditingMessageId(prev => (prev && targetIds.includes(prev) ? null : prev))
+      setMessageDrafts(prev => {
+        const next = { ...prev }
+        targetIds.forEach(id => delete next[id])
+        return next
+      })
+      setPushingMessageId(prev => (prev && targetIds.includes(prev) ? null : prev))
+      setSinglePushTracker(prev =>
+        prev && prev.messageId && targetIds.includes(prev.messageId) ? null : prev
+      )
+      setActionNotice(
+        res.deleted_conversation_id
+          ? 'Chat deleted'
+          : willDeleteAnswer
+          ? 'Message and answer deleted'
+          : 'Message deleted'
+      )
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete message')
+    }
+  }
+
+  // Delete an entire conversation plus everything pushed from it.
+  const deleteWholeChat = async (conv: AdminConversation) => {
+    const ok = confirm(
+      `Delete the whole chat "${conv.title || 'Untitled conversation'}"? All of its messages and everything pushed from it will be removed from Qdrant.`
+    )
+    if (!ok) return
+
+    setError('')
+    try {
+      await api(`/conversations/${conv.id}`, { method: 'DELETE' })
+      setEditingMessageId(null)
+      setMessageDrafts(prev => {
+        const next = { ...prev }
+        conv.messages.forEach(m => delete next[m.id])
+        return next
+      })
+      setSelectedConversationId(prev => (prev === conv.id ? null : prev))
+      setActionNotice('Chat deleted from history and brain memory')
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete chat')
+    }
+  }
+
   // Other Action Handlers
   const updateDraftItem = async (item: KnowledgeItem) => {
     setError('')
@@ -1198,6 +1345,7 @@ export function AdminApp() {
     { id: 'ready', label: 'Ready to Push', icon: CloudArrowUp, count: approvedItems.length },
     { id: 'pipeline', label: 'Pipeline', icon: Cpu, count: indexedItems.length },
     { id: 'categories', label: 'Categories', icon: Tag, count: categories.length },
+    { id: 'legacy', label: 'Legacy Corpus', icon: Stack, count: legacyTotal },
   ]
 
   if (loading) return <div className="grid min-h-[100dvh] place-items-center bg-bg text-muted">Loading admin portal...</div>
@@ -1380,10 +1528,18 @@ export function AdminApp() {
                         'No messages'
 
                       return (
-                        <button
+                        <div
                           key={conv.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => setSelectedConversationId(conv.id)}
-                          className={`relative block w-full px-4 py-3 text-left transition-colors ${
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setSelectedConversationId(conv.id)
+                            }
+                          }}
+                          className={`relative block w-full cursor-pointer px-4 py-3 text-left transition-colors ${
                             isActive ? 'bg-accent/[0.07]' : 'hover:bg-raised/60'
                           }`}
                         >
@@ -1411,13 +1567,27 @@ export function AdminApp() {
                             <span className="font-mono">{conv.id.slice(0, 8)}</span>
                             <span aria-hidden className="h-2.5 w-px shrink-0 bg-line" />
                             <span className="font-mono">{conv.messages.length} msgs</span>
-                            {conv.unindexedAssistants > 0 && (
-                              <span className="ml-auto rounded-full bg-accent-soft px-1.5 py-px font-semibold text-accent">
-                                {conv.unindexedAssistants} to push
-                              </span>
-                            )}
+                            <span className="ml-auto flex items-center gap-1.5">
+                              {conv.unindexedAssistants > 0 && (
+                                <span className="rounded-full bg-accent-soft px-1.5 py-px font-semibold text-accent">
+                                  {conv.unindexedAssistants} to push
+                                </span>
+                              )}
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  deleteWholeChat(conv)
+                                }}
+                                onKeyDown={e => e.stopPropagation()}
+                                className="flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
+                                title="Delete this chat and everything pushed from it"
+                                aria-label="Delete chat"
+                              >
+                                <Trash size={13} />
+                              </button>
+                            </span>
                           </div>
-                        </button>
+                        </div>
                       )
                     })
                   )}
@@ -1463,6 +1633,14 @@ export function AdminApp() {
                               Pushed to Qdrant
                             </span>
                           )}
+                          <button
+                            onClick={() => deleteWholeChat(selectedConversation)}
+                            title="Delete this chat permanently, including anything pushed from it"
+                            className="ctl ctl-md ctl-ghost ctl-danger"
+                          >
+                            <Trash size={14} />
+                            Delete chat
+                          </button>
                           <button
                             onClick={() => pushWholeConversation(selectedConversation)}
                             disabled={
@@ -1549,36 +1727,55 @@ export function AdminApp() {
                                       <StatusPill status="indexing" label="In pipeline" />
                                     )}
 
-                                    {/* Pencil + Paper plane actions */}
-                                    {!isUser && !isEditingThis && !isAlreadyPushed && (
-                                      <div className="ml-auto flex items-center gap-1 opacity-100 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                                    {/* Pencil + Paper plane actions, and delete for every message */}
+                                    {!isEditingThis && (
+                                      <div className="ml-auto flex items-center gap-1 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                                        {!isUser && !isAlreadyPushed && (
+                                          <>
+                                            <button
+                                              onClick={() =>
+                                                toggleMessageEdit(selectedConversation, message)
+                                              }
+                                              className="ctl ctl-icon"
+                                              title="Edit this message"
+                                              aria-label="Edit message"
+                                            >
+                                              <PencilSimple size={15} />
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                directPushMessage(selectedConversation, message)
+                                              }
+                                              disabled={
+                                                isThisMsgPushing ||
+                                                (!!pushingMessageId && !isThisMsgPushing)
+                                              }
+                                              className="ctl ctl-icon ctl-primary"
+                                              title="Push this message to Qdrant"
+                                              aria-label="Push message to Qdrant"
+                                            >
+                                              {isThisMsgPushing ? (
+                                                <CircleNotch size={15} className="animate-spin" />
+                                              ) : (
+                                                <PaperPlaneTilt size={15} weight="fill" />
+                                              )}
+                                            </button>
+                                          </>
+                                        )}
                                         <button
                                           onClick={() =>
-                                            toggleMessageEdit(selectedConversation, message)
+                                            deleteChatMessage(selectedConversation, message)
                                           }
-                                          className="ctl ctl-icon"
-                                          title="Edit this message"
-                                          aria-label="Edit message"
+                                          disabled={isThisMsgPushing}
+                                          className="ctl ctl-icon ctl-ghost ctl-danger"
+                                          title={
+                                            isUser
+                                              ? 'Delete this message and its answer'
+                                              : 'Delete this message'
+                                          }
+                                          aria-label="Delete message"
                                         >
-                                          <PencilSimple size={15} />
-                                        </button>
-                                        <button
-                                          onClick={() =>
-                                            directPushMessage(selectedConversation, message)
-                                          }
-                                          disabled={
-                                            isThisMsgPushing ||
-                                            (!!pushingMessageId && !isThisMsgPushing)
-                                          }
-                                          className="ctl ctl-icon ctl-primary"
-                                          title="Push this message to Qdrant"
-                                          aria-label="Push message to Qdrant"
-                                        >
-                                          {isThisMsgPushing ? (
-                                            <CircleNotch size={15} className="animate-spin" />
-                                          ) : (
-                                            <PaperPlaneTilt size={15} weight="fill" />
-                                          )}
+                                          <Trash size={15} />
                                         </button>
                                       </div>
                                     )}
@@ -2515,6 +2712,181 @@ export function AdminApp() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === 'legacy' && (
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-8">
+            {/* Toolbar */}
+            <div className="flex shrink-0 flex-col gap-3 rounded-lg border border-line bg-surface p-5 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-[16px] font-semibold tracking-tight text-ink">Legacy Corpus</h2>
+                <p className="mt-1 text-[13px] text-muted">
+                  TikTok DMs, comment replies, LinkedIn posts and video transcripts imported from the old knowledge base.
+                  These chunks are searchable via topic tags — fix a tag and retrieval routes to them.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div>
+                  <label className="eyebrow mb-1 block">Source</label>
+                <select
+                  value={legacySourceFilter}
+                  onChange={e => {
+                    setLegacySourceFilter(e.target.value)
+                    setLegacyPoints([])
+                    setLegacyNextOffset(null)
+                    setLegacyLoaded(false)
+                  }}
+                  className="h-9 rounded-lg border border-line bg-bg px-2.5 text-[13px] text-ink focus:border-accent focus:outline-none"
+                >
+                    <option value="">All sources</option>
+                    <option value="tiktok_dm">TikTok DMs</option>
+                    <option value="tiktok_comment_reply">TikTok Comments</option>
+                    <option value="linkedin_post">LinkedIn Posts</option>
+                    <option value="video_transcript">Video Transcripts</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="eyebrow mb-1 block">Topic tag</label>
+                  <input
+                    type="text"
+                    value={legacyTopicFilter}
+                    onChange={e => setLegacyTopicFilter(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setLegacyPoints([])
+                        setLegacyNextOffset(null)
+                        setLegacyLoaded(false)
+                      }
+                    }}
+                    placeholder="e.g. cybersecurity"
+                    className="h-9 w-44 rounded-lg border border-line bg-bg px-2.5 text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => fetchLegacyPoints({ reset: true })}
+                  disabled={legacyLoading}
+                  className="ctl ctl-ghost flex h-9 items-center gap-1.5 self-end"
+                >
+                  {legacyLoading ? <CircleNotch size={15} className="animate-spin" /> : <ArrowClockwise size={15} />}
+                  <span>Reload</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Count strip */}
+            <div className="shrink-0 rounded-lg border border-line bg-surface px-4 py-3 text-[13px] text-muted">
+              Showing <span className="font-mono font-semibold text-ink">{legacyPoints.length}</span> of{' '}
+              <span className="font-mono font-semibold text-ink">{legacyTotal}</span> legacy chunks
+            </div>
+
+            {/* Point list */}
+            <div className="flex flex-col gap-3">
+              {legacyPoints.map(point => {
+                const isEditing = legacyEditingId === point.id
+                return (
+                  <div key={point.id} className="rounded-lg border border-line bg-surface p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-raised px-2 py-0.5 font-mono text-[11.5px] text-accent">
+                        {point.source_type}
+                      </span>
+                      {point.domain && (
+                        <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] uppercase tracking-wider text-muted">
+                          {point.domain}
+                        </span>
+                      )}
+                      <span className="ml-auto font-mono text-[11.5px] text-muted">#{point.id}</span>
+                      <button
+                        onClick={() => {
+                          if (isEditing) {
+                            setLegacyEditingId(null)
+                          } else {
+                            setLegacyEditingId(point.id)
+                            setLegacyTopicsDraft(point.topics.join(', '))
+                            setLegacyDomainDraft(point.domain === 'personal' ? 'personal' : 'professional')
+                          }
+                        }}
+                        className="ctl ctl-ghost ctl-sm flex items-center gap-1 text-[12px]"
+                      >
+                        <PencilSimple size={14} />
+                        {isEditing ? 'Cancel' : 'Re-tag'}
+                      </button>
+                    </div>
+
+                    <p className="mt-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ink/90">
+                      {point.text.length > 600 ? `${point.text.slice(0, 600)}…` : point.text}
+                    </p>
+
+                    {isEditing ? (
+                      <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md border border-line bg-bg p-3">
+                        <div className="min-w-[240px] flex-1">
+                          <label className="eyebrow mb-1 block">Topics (comma-separated)</label>
+                          <input
+                            type="text"
+                            value={legacyTopicsDraft}
+                            onChange={e => setLegacyTopicsDraft(e.target.value)}
+                            placeholder="e.g. cybersecurity, studies"
+                            className="h-9 w-full rounded-lg border border-line bg-surface px-2.5 font-mono text-[13px] text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="eyebrow mb-1 block">Domain</label>
+                          <select
+                            value={legacyDomainDraft}
+                            onChange={e => setLegacyDomainDraft(e.target.value)}
+                            className="h-9 rounded-lg border border-line bg-surface px-2.5 text-[13px] text-ink focus:border-accent focus:outline-none"
+                          >
+                            <option value="professional">professional</option>
+                            <option value="personal">personal</option>
+                          </select>
+                        </div>
+                        <button
+                          onClick={() => handleSaveLegacyTags(point.id)}
+                          disabled={legacySavingId === point.id}
+                          className="ctl ctl-primary flex h-9 items-center gap-1.5"
+                        >
+                          {legacySavingId === point.id ? <CircleNotch size={15} className="animate-spin" /> : <Check size={15} weight="bold" />}
+                          <span>Save tags</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {point.topics.length > 0 ? (
+                          point.topics.map(t => (
+                            <span key={t} className="rounded bg-accent-soft px-2 py-0.5 font-mono text-[11.5px] text-accent">
+                              {t}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[12px] italic text-muted">untagged — only reachable via fallback search</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {legacyPoints.length === 0 && !legacyLoading && (
+                <div className="rounded-lg border border-dashed border-line bg-surface/50 p-8 text-center text-muted">
+                  No legacy chunks match the current filters.
+                </div>
+              )}
+              {legacyLoading && legacyPoints.length > 0 && (
+                <div className="flex items-center justify-center gap-2 py-3 text-[13px] text-muted">
+                  <CircleNotch size={16} className="animate-spin" /> Loading…
+                </div>
+              )}
+            </div>
+
+            {legacyNextOffset && (
+              <button
+                onClick={() => fetchLegacyPoints({ reset: false })}
+                disabled={legacyLoading}
+                className="ctl ctl-ghost mx-auto flex items-center gap-1.5"
+              >
+                {legacyLoading ? <CircleNotch size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+                <span>Load more</span>
+              </button>
+            )}
           </div>
         )}
       </main>

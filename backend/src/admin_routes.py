@@ -97,6 +97,59 @@ class BatchIngestResponse(BaseModel):
     message: str
 
 
+def _purge_knowledge_item(db: Session, item: KnowledgeItem) -> None:
+    """Delete a knowledge item together with its chunks, Qdrant vectors and jobs."""
+    chunks = db.scalars(
+        select(KnowledgeChunk).where(KnowledgeChunk.knowledge_item_id == item.id)
+    ).all()
+    qdrant_ids = [c.qdrant_point_id for c in chunks if c.qdrant_point_id]
+    if qdrant_ids:
+        try:
+            delete_points(qdrant_ids)
+        except Exception as exc:
+            print(f"Error purging Qdrant points during delete: {exc}")
+
+    db.query(KnowledgeChunk).filter(KnowledgeChunk.knowledge_item_id == item.id).delete()
+    db.query(IngestionJob).filter(IngestionJob.knowledge_item_id == item.id).delete()
+    db.delete(item)
+
+
+def _purge_knowledge_for_messages(db: Session, messages: list[Message]) -> int:
+    """Remove every knowledge item sourced from these chat messages so nothing
+    stays in brain memory after the chat content is deleted."""
+    if not messages:
+        return 0
+
+    message_ids = [m.id for m in messages]
+    items = list(
+        db.scalars(
+            select(KnowledgeItem).where(KnowledgeItem.source_message_id.in_(message_ids))
+        ).all()
+    )
+    known = {item.id for item in items}
+
+    # Legacy/manual chat items carry no source_message_id; match those by content.
+    contents = {(m.content or "").strip() for m in messages}
+    contents.discard("")
+    if contents:
+        orphans = db.scalars(
+            select(KnowledgeItem).where(
+                KnowledgeItem.source_type == "chat",
+                KnowledgeItem.source_message_id.is_(None),
+            )
+        ).all()
+        for item in orphans:
+            if item.id in known:
+                continue
+            if (item.content or "").strip() in contents:
+                items.append(item)
+                known.add(item.id)
+
+    for item in items:
+        _purge_knowledge_item(db, item)
+    return len(items)
+
+
 @router.get("/conversations")
 def all_conversations(
     admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)
@@ -164,6 +217,84 @@ def all_conversations(
             "knowledge_item_id": resolve_item(msg).id if resolve_item(msg) else None,
         } for msg in (row.messages or [])],
     } for row in rows]
+
+
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(
+    conversation_id: str,
+    admin: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete a whole chat: messages, knowledge items, vectors and jobs."""
+    conv = db.get(Conversation, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    messages = list(conv.messages)
+    purged = _purge_knowledge_for_messages(db, messages)
+
+    db.delete(conv)
+    db.commit()
+
+    return {
+        "status": "ok",
+        "deleted_conversation_id": conversation_id,
+        "deleted_messages": len(messages),
+        "purged_knowledge_items": purged,
+    }
+
+
+@router.delete("/messages/{message_id}")
+def delete_message(
+    message_id: str,
+    admin: AdminUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete a single chat message. A user message also removes its answer."""
+    msg = db.get(Message, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    conv = msg.conversation
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    ordered = list(conv.messages)
+    targets = [msg]
+    if msg.role == "user":
+        idx = next((i for i, m in enumerate(ordered) if m.id == message_id), None)
+        if idx is not None and idx + 1 < len(ordered):
+            following = ordered[idx + 1]
+            if following.role == "assistant":
+                targets.append(following)
+
+    purged = _purge_knowledge_for_messages(db, targets)
+    target_ids = {m.id for m in targets}
+    for target in targets:
+        db.delete(target)
+
+    remaining = db.scalar(
+        select(func.count(Message.id)).where(
+            Message.conversation_id == conv.id,
+            Message.id.notin_(target_ids),
+        )
+    )
+
+    deleted_conversation_id = None
+    if not remaining:
+        db.delete(conv)
+        deleted_conversation_id = conv.id
+    else:
+        conv.updated_at = utcnow()
+
+    db.commit()
+
+    return {
+        "status": "ok",
+        "deleted_message_ids": sorted(target_ids),
+        "purged_knowledge_items": purged,
+        "deleted_conversation_id": deleted_conversation_id,
+    }
 
 
 @router.get("/qdrant/stats")
@@ -353,22 +484,8 @@ def delete_knowledge(
     item = db.get(KnowledgeItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Knowledge item not found")
-    
-    # Remove Qdrant points if any
-    chunks = db.scalars(select(KnowledgeChunk).where(KnowledgeChunk.knowledge_item_id == item_id)).all()
-    qdrant_ids = [c.qdrant_point_id for c in chunks if c.qdrant_point_id]
-    if qdrant_ids:
-        try:
-            delete_points(qdrant_ids)
-        except Exception as e:
-            print(f"Error purging Qdrant points during delete: {e}")
 
-    # Remove chunks
-    db.query(KnowledgeChunk).filter(KnowledgeChunk.knowledge_item_id == item_id).delete()
-    # Remove jobs
-    db.query(IngestionJob).filter(IngestionJob.knowledge_item_id == item_id).delete()
-    # Remove item
-    db.delete(item)
+    _purge_knowledge_item(db, item)
     db.commit()
     return {"status": "ok", "deleted_item_id": item_id}
 
@@ -639,3 +756,126 @@ def delete_category(
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"message": f"Category '{name}' deleted successfully"}
+
+
+LEGACY_SOURCE_TYPES = ("tiktok_dm", "tiktok_comment_reply", "linkedin_post", "video_transcript")
+
+
+class LegacyPointResponse(BaseModel):
+    id: str
+    text: str
+    source_type: str
+    topics: list[str]
+    domain: Optional[str] = None
+
+
+class LegacyPointListResponse(BaseModel):
+    points: list[LegacyPointResponse]
+    next_offset: Optional[str] = None
+    total_matched: int
+
+
+class LegacyPointUpdate(BaseModel):
+    topics: list[str] = Field(default_factory=list, max_length=24)
+    domain: Optional[str] = Field(default=None, max_length=32)
+
+
+def _parse_point_id(point_id: str) -> int | str:
+    return int(point_id) if point_id.isdigit() else point_id
+
+
+@router.get("/legacy-points", response_model=LegacyPointListResponse)
+def list_legacy_points(
+    source_type: Optional[str] = None,
+    topic: Optional[str] = None,
+    limit: int = 24,
+    offset: Optional[str] = None,
+    admin: AdminUser = Depends(require_admin),
+):
+    """Browse the legacy social-import corpus (TikTok DMs/comments, LinkedIn,
+    video transcripts) that lives only in Qdrant, with scroll pagination."""
+    from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+    from src.database import get_client, get_collection_name
+
+    limit = max(1, min(limit, 100))
+    must = [FieldCondition(key="metadata.source.type", match=MatchAny(any=list(LEGACY_SOURCE_TYPES)))]
+    if source_type and source_type in LEGACY_SOURCE_TYPES:
+        must = [FieldCondition(key="metadata.source.type", match=MatchValue(value=source_type))]
+    if topic:
+        must.append(FieldCondition(key="metadata.topics", match=MatchValue(value=topic.strip().lower())))
+
+    client = get_client()
+    try:
+        points, next_offset = client.scroll(
+            collection_name=get_collection_name(),
+            limit=limit,
+            offset=_parse_point_id(offset) if offset else None,
+            scroll_filter=Filter(must=must),
+            with_payload=True,
+            with_vectors=False,
+        )
+        total = client.count(
+            collection_name=get_collection_name(),
+            count_filter=Filter(must=must),
+        ).count
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Qdrant error: {exc}") from exc
+
+    items: list[LegacyPointResponse] = []
+    for point in points:
+        payload = point.payload or {}
+        metadata = payload.get("metadata") or {}
+        source = metadata.get("source") or {}
+        topics = metadata.get("topics")
+        items.append(LegacyPointResponse(
+            id=str(point.id),
+            text=(payload.get("text") or "")[:1200],
+            source_type=source.get("type") or "unknown",
+            topics=topics if isinstance(topics, list) else [],
+            domain=metadata.get("domain"),
+        ))
+    return LegacyPointListResponse(
+        points=items,
+        next_offset=str(next_offset) if next_offset is not None else None,
+        total_matched=total,
+    )
+
+
+@router.put("/legacy-points/{point_id}")
+def update_legacy_point(
+    point_id: str,
+    payload: LegacyPointUpdate,
+    admin: AdminUser = Depends(require_admin),
+):
+    """Re-tag a legacy Qdrant point: overwrite metadata.topics / metadata.domain
+    (shallow-merged, source/classification metadata stays intact)."""
+    from src.classifier import determine_domain
+    from src.database import get_client, get_collection_name
+
+    topics = [t.strip().lower() for t in payload.topics if t.strip()]
+    domain = (payload.domain or "").strip().lower() or determine_domain(topics)
+    if domain not in ("personal", "professional"):
+        raise HTTPException(status_code=422, detail="domain must be 'personal' or 'professional'")
+
+    client = get_client()
+    try:
+        existing = client.retrieve(
+            collection_name=get_collection_name(),
+            ids=[_parse_point_id(point_id)],
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Point not found")
+        client.set_payload(
+            collection_name=get_collection_name(),
+            payload={"topics": topics, "domain": domain},
+            points=[_parse_point_id(point_id)],
+            key="metadata",
+            wait=True,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Qdrant error: {exc}") from exc
+    return {"id": point_id, "topics": topics, "domain": domain}

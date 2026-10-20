@@ -1,6 +1,7 @@
 import re
 import time
 from typing import List, Dict, Any, Optional
+from src.classifier import classify_topics
 from src.database import ensure_collection, insert_points, search_points
 from src.embeddings import embedding_generator
 from src.llm import llm
@@ -40,6 +41,22 @@ Follow these rules:
 - Do not write formal Urdu/Hindi or Devanagari
 - Keep lowercase "i" and use loose punctuation
 - Clearly distinguish knowledge, experience, opinion, and generic information"""
+
+
+# Re-rank boosts applied on top of raw cosine score. Curated knowledge (uploaded
+# markdown, curated chat answers) is trusted slightly higher; the legacy
+# social-import corpus (TikTok DMs/comments, video transcripts) is mildly
+# demoted. Heavy demotion is not needed — the noise slot cap already protects
+# curated slots — and over-demoting suppresses genuine legacy answers (e.g.
+# the university-list DM reply for a cyber-security question).
+_SOURCE_BOOSTS = {
+    "upload": 0.12,
+    "chat": 0.02,
+    "tiktok_dm": -0.06,
+    "tiktok_comment_reply": -0.08,
+    "video_transcript": -0.08,
+    "linkedin_post": -0.05,
+}
 
 
 def is_emoji_only(text: str) -> bool:
@@ -85,35 +102,159 @@ def build_context(
     
     return "\n\n".join(context_parts) if context_parts else ""
 
+def _source_boost(payload: Dict[str, Any]) -> float:
+    source = (payload.get("metadata") or {}).get("source") or {}
+    return _SOURCE_BOOSTS.get(source.get("type") or "", 0.0)
+
+
+def _search_source_types() -> Optional[List[str]]:
+    """Parse settings.RAG_SOURCES into a Qdrant filter list (None = search everything)."""
+    raw = (settings.RAG_SOURCES or "").strip()
+    if not raw or raw.lower() == "all":
+        return None
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+
+def _is_curated(payload: Dict[str, Any]) -> bool:
+    source = (payload.get("metadata") or {}).get("source") or {}
+    return (source.get("type") or "") in ("upload", "chat")
+
+
+_VOID_ANSWER_RE = re.compile(r"(?is)answer:\s*(no idea|no information|i don'?t know)")
+
+
+def _is_void_answer(payload: Dict[str, Any]) -> bool:
+    """Chat items whose stored answer is itself \"no idea ...\" carry no knowledge;
+    using them as evidence teaches the model to repeat the refusal."""
+    text = payload.get("text") or ""
+    return bool(_VOID_ANSWER_RE.search(text))
+
+
+def _merge_points(*point_lists: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Dedupe by point id keeping the best fused score."""
+    merged: Dict[Any, Dict[str, Any]] = {}
+    for points in point_lists:
+        for point in points:
+            cur = merged.get(point["id"])
+            if cur is None or point["score"] > cur["score"]:
+                merged[point["id"]] = point
+    return sorted(merged.values(), key=lambda p: p["score"], reverse=True)
+
+
+def _apply_noise_cap(points: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    """Give curated knowledge priority for slots; legacy/social chunks only fill
+    leftovers (up to RAG_NOISE_MAX), then any still-vacant slots go back to noise
+    so a pure-legacy topic still gets full context."""
+    if settings.RAG_NOISE_MAX <= 0:
+        return points[:top_k]
+    selected: List[Dict[str, Any]] = []
+    deferred_noise: List[Dict[str, Any]] = []
+    noise_used = 0
+    for point in points:
+        if len(selected) >= top_k:
+            break
+        if _is_curated(point.get("payload") or {}):
+            selected.append(point)
+        elif noise_used < settings.RAG_NOISE_MAX:
+            selected.append(point)
+            noise_used += 1
+        else:
+            deferred_noise.append(point)
+    for point in deferred_noise:
+        if len(selected) >= top_k:
+            break
+        selected.append(point)
+    selected.sort(key=lambda p: p["score"], reverse=True)
+    return selected
+
+
+def _rerank(points: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    """Apply source-trust boosts, drop void/below-threshold chunks, order, cap noise."""
+    for point in points:
+        if "raw_score" not in point:
+            point["raw_score"] = point["score"]
+        point["score"] = point["raw_score"] + _source_boost(point.get("payload") or {})
+    ranked = [
+        p for p in points
+        if p["score"] >= settings.RAG_SCORE_THRESHOLD
+        and not _is_void_answer(p.get("payload") or {})
+    ]
+    ranked.sort(key=lambda p: p["score"], reverse=True)
+    return _apply_noise_cap(ranked, top_k)
+
+
 def retrieve(
     question: str,
     top_k: int = 5,
     filter_dict: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Full RAG pipeline: embed question, search, build context."""
+    """Full RAG pipeline: embed question, route by intent tags (soft), search the
+    configured corpus plus a guaranteed curated pool, re-rank by source trust,
+    cap legacy noise, build context."""
     start_time = time.time()
-    
-    # Embed the question
+
     query_vector = embedding_generator.embed(question)
-    
-    # Search Qdrant
-    points = search_points(
-        query_vector=query_vector,
-        top_k=top_k,
-        filter_dict=filter_dict,
-    )
-    
+
+    candidate_pool = max(top_k * 8, 30)
+    raw_floor = max(0.0, settings.RAG_SCORE_THRESHOLD - 0.15)
+    # Curated sources (uploaded md + curated chat) get a guaranteed slot in the
+    # candidate pool: raw noise scores are so high that curated docs can be
+    # crowded out of an unrestricted pool before boosts ever apply.
+    curated_types = ["upload", "chat"]
+
+    def _search(
+        topics: Optional[List[str]] = None,
+        source_types: Optional[List[str]] = "_default",
+    ) -> List[Dict[str, Any]]:
+        types = _search_source_types() if source_types == "_default" else source_types
+        return search_points(
+            query_vector=query_vector,
+            top_k=candidate_pool,
+            filter_dict=filter_dict,
+            source_types=types,
+            topics=topics,
+            score_threshold=raw_floor,
+        )
+
+    def _collect(topics: Optional[List[str]], include_curated: bool = True) -> List[Dict[str, Any]]:
+        pools = [_search(topics=topics)]
+        if include_curated:
+            pools.append(_search(topics=topics, source_types=curated_types))
+        return _merge_points(*pools)
+
+    # Route by intent: classify the question against the brain_config lexicon and
+    # restrict candidates to chunks carrying any matched topic. Soft rule — if the
+    # tag filter starves the result set, retry without it (never answer nothing).
+    query_topics: List[str] = []
+    tags_applied = False
+    if settings.RAG_USE_TAGS:
+        query_topics = classify_topics(text=question)
+
+    if query_topics:
+        # Require a minimum number of tagged hits, else soft-fallback to untagged.
+        tags_applied = len(_search(topics=query_topics)) >= settings.RAG_TAG_MIN_HITS
+
+    active_topics = query_topics if tags_applied else None
+    points = _rerank(_collect(active_topics), top_k)
+
+    if len(points) < top_k:
+        # Tagged/curated pool left slots empty → top up from the untagged corpus.
+        # Rerank the raw pool first so only fused scores are merged/compared.
+        points = _rerank(_merge_points(points, _rerank(_collect(None), candidate_pool)), top_k)
+
     # Build context
     context = build_context(points)
-    
+
     latency = time.time() - start_time
-    
+
     return {
         "context": context,
         "points": points,
         "latency": latency,
         "top_k": top_k,
         "vector_size": len(query_vector),
+        "query_topics": query_topics,
+        "tags_applied": tags_applied,
     }
 
 
