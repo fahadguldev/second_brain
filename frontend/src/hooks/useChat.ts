@@ -182,11 +182,23 @@ export function useChat() {
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
         for (const line of lines) {
-          if (line.trim()) handleEvent(JSON.parse(line) as StreamEvent)
+          if (line.trim()) {
+            try {
+              handleEvent(JSON.parse(line) as StreamEvent)
+            } catch (err) {
+              console.warn('Could not parse stream event line:', line, err)
+            }
+          }
         }
         if (done) break
       }
-      if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent)
+      if (buffer.trim()) {
+        try {
+          handleEvent(JSON.parse(buffer) as StreamEvent)
+        } catch (err) {
+          console.warn('Could not parse trailing stream event:', buffer, err)
+        }
+      }
       return accumulatedAnswer.trim() || null
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
