@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { lazy } from 'react'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
+import { useVoicePlayer } from './hooks/useVoicePlayer'
 import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
 import { Composer } from './components/Composer'
@@ -16,10 +17,26 @@ const AdminApp = lazy(() =>
 
 function ChatApp() {
   const {
-    messages, conversations, activeConversationId, isThinking, isLoading,
-    sendMessage, selectConversation, newConversation, scrollRef,
+    messages,
+    conversations,
+    activeConversationId,
+    isThinking,
+    isLoading,
+    sendMessage,
+    selectConversation,
+    newConversation,
+    scrollRef,
   } = useChat()
   const { theme, toggle } = useTheme()
+  const {
+    playingId,
+    loadingId,
+    errorId,
+    errorMessage,
+    play: playVoice,
+    stop: stopVoice,
+  } = useVoicePlayer()
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const turns = messages.filter(m => m.role === 'user').length
@@ -36,24 +53,30 @@ function ChatApp() {
   }, [])
 
   const handlePick = (text: string) => {
+    stopVoice()
     sendMessage(text)
   }
 
   const closeSidebar = () => setSidebarOpen(false)
   const handleSelectConversation = (id: string) => {
+    stopVoice()
     selectConversation(id)
     closeSidebar()
   }
   const handleNewConversation = () => {
+    stopVoice()
     newConversation()
     closeSidebar()
   }
 
   const sidebar = (
     <Sidebar
-      turnCount={turns} onSuggest={handlePick}
-      conversations={conversations} activeConversationId={activeConversationId}
-      onSelectConversation={handleSelectConversation} onNewConversation={handleNewConversation}
+      turnCount={turns}
+      onSuggest={handlePick}
+      conversations={conversations}
+      activeConversationId={activeConversationId}
+      onSelectConversation={handleSelectConversation}
+      onNewConversation={handleNewConversation}
     />
   )
 
@@ -75,23 +98,39 @@ function ChatApp() {
         </div>
 
         <main className="flex h-full min-h-0 flex-col overflow-hidden">
-          <Header isThinking={isThinking} theme={theme} onToggleTheme={toggle} onMenu={() => setSidebarOpen(true)} />
+          <Header
+            isThinking={isThinking}
+            theme={theme}
+            onToggleTheme={toggle}
+            onMenu={() => setSidebarOpen(true)}
+          />
 
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
             {isLoading ? (
-              <div className="grid h-full place-items-center text-sm text-muted">Loading history...</div>
+              <div className="grid h-full place-items-center text-sm text-muted">
+                Loading history...
+              </div>
             ) : messages.length === 0 ? (
               <EmptyState onPick={handlePick} />
             ) : (
               <>
                 <div className="mx-auto flex w-full flex-col gap-5 max-w-3xl">
-                  {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+                  {messages.map(msg => (
+                    <MessageBubble
+                      key={msg.id}
+                      msg={msg}
+                      onPlayVoice={playVoice}
+                      isPlayingVoice={playingId === msg.id}
+                      isVoiceLoading={loadingId === msg.id}
+                      voiceError={errorId === msg.id ? errorMessage : null}
+                    />
+                  ))}
                 </div>
 
                 {turns > 0 && (
                   <div className="mx-auto mt-8 flex max-w-3xl justify-center">
                     <button
-                      onClick={newConversation}
+                      onClick={handleNewConversation}
                       className="rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent/40 hover:text-accent"
                     >
                       New conversation

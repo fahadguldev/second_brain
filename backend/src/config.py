@@ -49,6 +49,12 @@ class Settings:
         for k, val in os.environ.items()
         if k.startswith("GEMINI_API_KEY") and val.strip()
     ))
+
+    # ElevenLabs Voice API
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+    ELEVENLABS_MODEL_ID: str = os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+
     # Model names from Google AI Studio
     # - Embedding model: models/gemini-embedding-2 produces 3072-dim vectors (matches knowledge_base)
     # - Generation model: gemini-3.1-lite

@@ -15,6 +15,13 @@ from src.config import settings
 from src.database import ensure_collection
 from src.llm import GenerationError
 from src.rag import generate_answer, generate_answer_stream
+from src.tts_service import (
+    get_tts_status,
+    synthesize_speech,
+    synthesize_speech_stream,
+    TTSConfigurationError,
+    TTSServiceError,
+)
 
 router = APIRouter(prefix="/api", tags=["second-brain"])
 
@@ -238,3 +245,58 @@ def ask_question_stream(
         if header_name.lower() == b"set-cookie":
             stream_response.raw_headers.append((header_name, header_value))
     return stream_response
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=10_000)
+    voice_id: Optional[str] = Field(default=None, max_length=64)
+
+
+class TTSStatusResponse(BaseModel):
+    configured: bool
+    voice_id: Optional[str] = None
+    model_id: Optional[str] = None
+
+
+@router.get("/tts/status", response_model=TTSStatusResponse)
+def tts_status() -> TTSStatusResponse:
+    return TTSStatusResponse(**get_tts_status())
+
+
+@router.post("/tts")
+async def generate_speech(req: TTSRequest):
+    try:
+        audio_bytes = await synthesize_speech(req.text, voice_id=req.voice_id)
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": 'inline; filename="speech.mp3"',
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+    except TTSConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except TTSServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {str(exc)}") from exc
+
+
+@router.post("/tts/stream")
+async def stream_speech(req: TTSRequest):
+    try:
+        return StreamingResponse(
+            synthesize_speech_stream(req.text, voice_id=req.voice_id),
+            media_type="audio/mpeg",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except TTSConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"TTS stream failed: {str(exc)}") from exc
