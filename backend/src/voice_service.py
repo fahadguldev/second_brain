@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import logging
 from pathlib import Path
@@ -9,6 +10,7 @@ from src.jsf_keys import jsf_key_manager
 logger = logging.getLogger("second_brain.voice")
 
 JSF_API_BASE = "https://www.jsflabs.io/api/v1"
+JSF_FAST_TTS_ENDPOINT = "https://www.jsflabs.io/api/jsf-tts-3"
 AUDIO_CACHE_DIR = Path("audio_cache")
 AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -19,15 +21,15 @@ class VoiceConfigurationError(Exception):
 
 
 class VoiceServiceError(Exception):
-    """Raised when JSF Labs API call fails across all available keys."""
+    """Raised when JSF Labs API call fails across all available keys or endpoints."""
     def __init__(self, message: str, status_code: int = 500):
         super().__init__(message)
         self.status_code = status_code
 
 
 def is_voice_configured() -> bool:
-    """Check if any JSF Labs API keys are configured."""
-    return jsf_key_manager.has_keys
+    """Check if any JSF Labs API keys or User IDs are configured."""
+    return bool(settings.JSF_USER_ID.strip()) or jsf_key_manager.has_keys
 
 
 def get_voice_status() -> Dict[str, Any]:
@@ -36,6 +38,7 @@ def get_voice_status() -> Dict[str, Any]:
     return {
         "provider": "jsflabs",
         "configured": configured,
+        "has_user_id": bool(settings.JSF_USER_ID.strip()),
         "voice_id": settings.JSF_VOICE_ID if configured else None,
         "speed": settings.JSF_TTS_SPEED if configured else 1.0,
         "key_pool": jsf_key_manager.get_status_summary(),
@@ -46,6 +49,65 @@ def _compute_cache_key(text: str, voice_id: Optional[str], speed: float) -> str:
     """Generate deterministic hash for text and synthesis parameters."""
     raw = f"jsflabs:{voice_id or 'default'}:{speed}:{text.strip()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def _synthesize_via_fast_inference(
+    text: str,
+    voice_id: str,
+    speed: float,
+    user_id: str,
+) -> bytes:
+    """
+    Call the JSF Labs Fast Inference endpoint:
+    POST https://www.jsflabs.io/api/jsf-tts-3
+    Uses dashboard user session credits directly.
+    """
+    payload = {
+        "userId": user_id,
+        "text": text,
+        "voiceId": voice_id,
+        "speed": speed,
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Origin": "https://www.jsflabs.io",
+        "Referer": "https://www.jsflabs.io/dashboard/fast-inference",
+    }
+    # Also attach API key if available
+    if jsf_key_manager.has_keys:
+        try:
+            key_state = jsf_key_manager.reserve_key()
+            headers["x-api-key"] = key_state.api_key
+        except Exception:
+            pass
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(JSF_FAST_TTS_ENDPOINT, json=payload, headers=headers)
+        if response.status_code not in (200, 201):
+            err_msg = response.text
+            try:
+                err_json = response.json()
+                err_msg = err_json.get("error") or err_json.get("message") or err_msg
+            except Exception:
+                pass
+            raise VoiceServiceError(f"Fast inference error ({response.status_code}): {err_msg}", status_code=response.status_code)
+
+        content_type = response.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            res_json = response.json()
+            # Check for URL
+            audio_url = res_json.get("audioUrl") or res_json.get("audio_url") or res_json.get("url")
+            if audio_url:
+                audio_res = await client.get(audio_url, timeout=30.0)
+                if audio_res.status_code == 200:
+                    return audio_res.content
+            # Check for base64 encoded audio
+            b64_audio = res_json.get("audio") or res_json.get("audioBase64") or res_json.get("base64")
+            if b64_audio:
+                return base64.b64decode(b64_audio)
+            raise VoiceServiceError(f"Could not extract audio from response: {response.text}")
+        else:
+            return response.content
 
 
 async def synthesize_speech(
@@ -59,24 +121,42 @@ async def synthesize_speech(
     """
     if not is_voice_configured():
         raise VoiceConfigurationError(
-            "JSF Labs API key is not configured. Set JSF_API_KEY in backend/.env"
+            "JSF Labs credentials are not configured. Set JSF_API_KEY or JSF_USER_ID in backend/.env"
         )
 
     clean_text = text.strip()
     if not clean_text:
         raise ValueError("Text cannot be empty.")
 
-    # Always ensure a valid voice_id (custom or fallback to built-in default voice)
     target_voice_id = voice_id or settings.JSF_VOICE_ID or "jsf_default_male"
     target_speed = speed if speed is not None else settings.JSF_TTS_SPEED
 
-    # Check local disk cache first to conserve requests
+    # Check local disk cache first
     cache_key = _compute_cache_key(clean_text, target_voice_id, target_speed)
     cache_path = AUDIO_CACHE_DIR / f"{cache_key}.wav"
 
     if cache_path.exists():
         logger.info(f"JSF Labs TTS cache hit for key {cache_key[:12]}")
         return cache_path.read_bytes()
+
+    # 1. If JSF_USER_ID is provided, try the fast inference endpoint first
+    if settings.JSF_USER_ID.strip():
+        try:
+            logger.info("Synthesizing via JSF Labs Fast Inference endpoint (/api/jsf-tts-3)...")
+            audio_bytes = await _synthesize_via_fast_inference(
+                text=clean_text,
+                voice_id=target_voice_id,
+                speed=target_speed,
+                user_id=settings.JSF_USER_ID.strip(),
+            )
+            cache_path.write_bytes(audio_bytes)
+            return audio_bytes
+        except Exception as e:
+            logger.warning(f"Fast inference endpoint failed ({e}); falling back to standard API gateway.")
+
+    # 2. Standard Developer API with recurring key pool rotation
+    if not jsf_key_manager.has_keys:
+        raise VoiceServiceError("No active JSF Labs API keys available.", status_code=503)
 
     url = f"{JSF_API_BASE}/text-to-speech"
     payload: Dict[str, Any] = {
@@ -105,7 +185,6 @@ async def synthesize_speech(
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(url, json=payload, headers=headers)
 
-                # Extract readable error message from JSF Labs response if not 200/201
                 err_detail = response.text
                 retry_after = None
                 try:
@@ -140,10 +219,8 @@ async def synthesize_speech(
                     errors.append(f"Key ...{active_key[-6:]} [{response.status_code}]: {err_detail}")
                     continue
 
-                # Mark key as healthy
+                # Success
                 jsf_key_manager.mark_key_success(active_key)
-
-                # Process successful response
                 content_type = response.headers.get("Content-Type", "")
                 audio_bytes: bytes
 
@@ -153,7 +230,6 @@ async def synthesize_speech(
                     if not audio_url:
                         raise VoiceServiceError(f"JSF Labs returned no audio_url: {response.text}")
 
-                    # Download the studio-mastered audio file
                     audio_res = await client.get(audio_url, timeout=30.0)
                     if audio_res.status_code != 200:
                         raise VoiceServiceError(
@@ -163,7 +239,6 @@ async def synthesize_speech(
                 else:
                     audio_bytes = response.content
 
-                # Cache audio file locally
                 cache_path.write_bytes(audio_bytes)
                 logger.info(f"Synthesized and cached JSF Labs TTS ({len(audio_bytes)} bytes) using key ...{active_key[-6:]}")
                 return audio_bytes
@@ -174,7 +249,6 @@ async def synthesize_speech(
             errors.append(f"Key ...{active_key[-6:]} Network Error: {str(exc)}")
             continue
 
-    # If all keys failed
     raise VoiceServiceError(
         f"All JSF Labs API keys failed or were exhausted. Errors: {' | '.join(errors)}",
         status_code=502,
@@ -208,7 +282,7 @@ async def clone_voice(
     Returns portable voice_id.
     """
     if not is_voice_configured():
-        raise VoiceConfigurationError("JSF Labs API key is not configured.")
+        raise VoiceConfigurationError("JSF Labs credentials are not configured.")
 
     url = f"{JSF_API_BASE}/voice-clone"
     files = {

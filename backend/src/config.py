@@ -51,6 +51,7 @@ class Settings:
     ))
 
     # JSF Labs Voice API (TTS)
+    JSF_USER_ID: str = os.getenv("JSF_USER_ID", "")
     JSF_API_KEY: str = os.getenv("JSF_API_KEY", "")
     JSF_API_KEYS: list[str] = list(dict.fromkeys(
         [val.strip() for k, val in os.environ.items() if k.startswith("JSF_API_KEY") and val.strip()] +
