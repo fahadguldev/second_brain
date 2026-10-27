@@ -1,4 +1,4 @@
-import { List, MoonStars, Sun } from '@phosphor-icons/react'
+import { List, MoonStars, PhoneCall, Sun } from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
 
 export function Header({
@@ -6,11 +6,13 @@ export function Header({
   theme,
   onToggleTheme,
   onMenu,
+  onStartCall,
 }: {
   isThinking: boolean
   theme: 'light' | 'dark'
   onToggleTheme: () => void
   onMenu?: () => void
+  onStartCall?: () => void
 }) {
   return (
     <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-line px-4 sm:px-6">
@@ -35,6 +37,20 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Direct 1-on-1 Voice Call Button */}
+        {onStartCall && (
+          <motion.button
+            type="button"
+            onClick={onStartCall}
+            whileTap={{ scale: 0.94 }}
+            aria-label="Start 1-on-1 voice call"
+            className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition-all hover:border-accent hover:bg-accent/20 hover:shadow-soft"
+          >
+            <PhoneCall size={14} weight="fill" className="text-accent" />
+            <span className="hidden sm:inline">Call Fahad</span>
+          </motion.button>
+        )}
+
         <span
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
             isThinking

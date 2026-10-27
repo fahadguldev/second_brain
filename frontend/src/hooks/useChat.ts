@@ -113,9 +113,10 @@ export function useChat() {
     setMessages([])
   }, [])
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string): Promise<string | null> => {
     const trimmed = text.trim()
-    if (!trimmed || isThinking) return
+    if (!trimmed || isThinking) return null
+    let accumulatedAnswer = ''
     const optimisticId = makeId()
     const assistantId = makeId()
     const controller = new AbortController()
@@ -155,6 +156,9 @@ export function useChat() {
           return
         }
         if (event.type === 'error') throw new Error(event.message)
+        if (event.type === 'delta') {
+          accumulatedAnswer += event.text
+        }
         if (event.type === 'done') {
           setMessages(prev => prev.map(message => {
             if (message.id === optimisticId) return { ...message, id: event.user_message_id }
@@ -178,11 +182,24 @@ export function useChat() {
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
         for (const line of lines) {
-          if (line.trim()) handleEvent(JSON.parse(line) as StreamEvent)
+          if (line.trim()) {
+            try {
+              handleEvent(JSON.parse(line) as StreamEvent)
+            } catch (err) {
+              console.warn('Could not parse stream event line:', line, err)
+            }
+          }
         }
         if (done) break
       }
-      if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent)
+      if (buffer.trim()) {
+        try {
+          handleEvent(JSON.parse(buffer) as StreamEvent)
+        } catch (err) {
+          console.warn('Could not parse trailing stream event:', buffer, err)
+        }
+      }
+      return accumulatedAnswer.trim() || null
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         // Stream was superseded or the chat unmounted: drop the optimistic pair.
@@ -194,6 +211,7 @@ export function useChat() {
               text: message.text || 'Could not generate a response. Please try again.' }
           : message))
       }
+      return null
     } finally {
       if (streamAbortRef.current === controller) streamAbortRef.current = null
       setIsThinking(false)

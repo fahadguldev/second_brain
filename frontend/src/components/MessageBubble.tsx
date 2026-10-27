@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowSquareOut, CaretDown, FileText, Lightbulb, Play, WarningCircle } from '@phosphor-icons/react'
+import {
+  ArrowSquareOut,
+  CaretDown,
+  CircleNotch,
+  FileText,
+  Lightbulb,
+  Pause,
+  Play,
+  SpeakerHigh,
+  WarningCircle,
+} from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ChatMessage, SourceItem } from '../types'
 import { ThinkingDots } from './ThinkingDots'
@@ -27,11 +37,14 @@ interface VideoPreview {
 
 function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
   const videoUrls = useMemo(
-    () => Array.from(new Set(
-      sources
-        .map(source => sourceMetadata(source)?.source?.url)
-        .filter((url): url is string => Boolean(url)),
-    )),
+    () =>
+      Array.from(
+        new Set(
+          sources
+            .map(source => sourceMetadata(source)?.source?.url)
+            .filter((url): url is string => Boolean(url)),
+        ),
+      ),
     [sources],
   )
   const [videos, setVideos] = useState<VideoPreview[]>([])
@@ -52,7 +65,9 @@ function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
           return { url, title: 'Watch related video' } satisfies VideoPreview
         }
         try {
-          const response = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`)
+          const response = await fetch(
+            `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
+          )
           if (!response.ok) return { url, title: 'Watch related video on TikTok' }
           const data = await response.json()
           return {
@@ -92,7 +107,10 @@ function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
               <Play size={11} weight="fill" />
             </span>
             <span className="line-clamp-1 flex-1">{video.title}</span>
-            <ArrowSquareOut size={14} className="shrink-0 text-muted opacity-60 transition-opacity group-hover:opacity-100" />
+            <ArrowSquareOut
+              size={14}
+              className="shrink-0 text-muted opacity-60 transition-opacity group-hover:opacity-100"
+            />
           </a>
         ))}
       </div>
@@ -150,7 +168,21 @@ function MetaRow({ info }: { info: NonNullable<ChatMessage['info']> }) {
   )
 }
 
-export function MessageBubble({ msg }: { msg: ChatMessage }) {
+export interface MessageBubbleProps {
+  msg: ChatMessage
+  onPlayVoice?: (messageId: string, text: string) => void
+  isPlayingVoice?: boolean
+  isVoiceLoading?: boolean
+  voiceError?: string | null
+}
+
+export function MessageBubble({
+  msg,
+  onPlayVoice,
+  isPlayingVoice = false,
+  isVoiceLoading = false,
+  voiceError = null,
+}: MessageBubbleProps) {
   const reduce = useReducedMotion()
   const isUser = msg.role === 'user'
 
@@ -209,6 +241,63 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
               </>
             )}
             {msg.info && <MetaRow info={msg.info} />}
+
+            {/* JSF Labs Voice Playback Trigger */}
+            {onPlayVoice && (
+              <div className="mt-3 flex items-center gap-2 border-t border-line/60 pt-2.5">
+                <button
+                  type="button"
+                  onClick={() => onPlayVoice(msg.id, msg.text)}
+                  disabled={isVoiceLoading}
+                  aria-label={
+                    isPlayingVoice
+                      ? 'Pause voice response'
+                      : 'Play voice response with JSF Labs'
+                  }
+                  className={`group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                    isPlayingVoice
+                      ? 'border-accent bg-accent/15 text-accent shadow-sm'
+                      : isVoiceLoading
+                      ? 'border-accent/40 bg-accent/5 text-accent opacity-85 cursor-wait'
+                      : 'border-line/70 bg-raised/50 text-muted hover:border-accent/40 hover:text-accent'
+                  }`}
+                >
+                  {isVoiceLoading ? (
+                    <>
+                      <CircleNotch size={12} className="animate-spin text-accent" />
+                      <span>Generating voice…</span>
+                    </>
+                  ) : isPlayingVoice ? (
+                    <>
+                      <Pause size={12} weight="fill" className="text-accent" />
+                      <span>Pause voice</span>
+                      <span className="ml-0.5 flex h-2.5 items-end gap-0.5">
+                        <span className="h-1.5 w-0.5 rounded-full bg-accent animate-pulse" />
+                        <span className="h-2.5 w-0.5 rounded-full bg-accent animate-bounce" />
+                        <span className="h-1 w-0.5 rounded-full bg-accent animate-pulse" />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <SpeakerHigh
+                        size={13}
+                        weight="bold"
+                        className="transition-transform group-hover:scale-110"
+                      />
+                      <span>Listen</span>
+                    </>
+                  )}
+                </button>
+                {voiceError && (
+                  <span
+                    className="max-w-[240px] truncate text-[10px] text-danger"
+                    title={voiceError}
+                  >
+                    {voiceError}
+                  </span>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

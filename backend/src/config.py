@@ -49,6 +49,18 @@ class Settings:
         for k, val in os.environ.items()
         if k.startswith("GEMINI_API_KEY") and val.strip()
     ))
+
+    # JSF Labs Voice API (TTS)
+    JSF_USER_ID: str = os.getenv("JSF_USER_ID", "")
+    JSF_API_KEY: str = os.getenv("JSF_API_KEY", "")
+    JSF_API_KEYS: list[str] = list(dict.fromkeys(
+        [val.strip() for k, val in os.environ.items() if k.startswith("JSF_API_KEY") and val.strip()] +
+        [k.strip() for k in os.getenv("JSF_API_KEYS", "").split(",") if k.strip()]
+    ))
+    # Default to built-in JSF Labs default voice if not specified
+    JSF_VOICE_ID: str = os.getenv("JSF_VOICE_ID", "jsf_default_male")
+    JSF_TTS_SPEED: float = float(os.getenv("JSF_TTS_SPEED", "1.0"))
+
     # Model names from Google AI Studio
     # - Embedding model: models/gemini-embedding-2 produces 3072-dim vectors (matches knowledge_base)
     # - Generation model: gemini-3.1-lite

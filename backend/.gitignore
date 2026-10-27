@@ -10,3 +10,6 @@ wheels/
 .venv
 .env
 *.db
+
+# Audio Cache (ElevenLabs TTS)
+audio_cache/
