@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
+  ArrowUp,
   CircleNotch,
+  Keyboard,
   Microphone,
   MicrophoneSlash,
   PhoneDisconnect,
@@ -22,6 +24,7 @@ interface VoiceCallModalProps {
   onEndCall: () => void
   onToggleMute: () => void
   onInterrupt: () => void
+  onSendTextMessage: (text: string) => void
 }
 
 function formatDuration(seconds: number): string {
@@ -41,25 +44,49 @@ export function VoiceCallModal({
   onEndCall,
   onToggleMute,
   onInterrupt,
+  onSendTextMessage,
 }: VoiceCallModalProps) {
   const [showSubtitles, setShowSubtitles] = useState(true)
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [inputText, setInputText] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // Keyboard navigation: Escape ends call, Space toggles mute
+  // Focus input automatically when chat is opened
+  useEffect(() => {
+    if (isChatOpen) {
+      setTimeout(() => inputRef.current?.focus(), 60)
+    }
+  }, [isChatOpen])
+
+  // Keyboard navigation: Escape closes chat or ends call, Space toggles mute when not in input
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent) => {
+      const targetTag = (e.target as HTMLElement).tagName
       if (e.key === 'Escape') {
-        onEndCall()
-      } else if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+        if (isChatOpen) {
+          setIsChatOpen(false)
+        } else {
+          onEndCall()
+        }
+      } else if (e.code === 'Space' && targetTag !== 'TEXTAREA' && targetTag !== 'INPUT') {
         e.preventDefault()
         onToggleMute()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onEndCall, onToggleMute])
+  }, [isOpen, isChatOpen, onEndCall, onToggleMute])
 
   if (!isOpen) return null
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const trimmed = inputText.trim()
+    if (!trimmed) return
+    onSendTextMessage(trimmed)
+    setInputText('')
+  }
 
   const getStatusLabel = () => {
     switch (callState) {
@@ -146,10 +173,24 @@ export function VoiceCallModal({
             {/* Outer pulsating concentric aura rings */}
             <motion.div
               animate={{
-                scale: callState === 'speaking' ? [1, 1.25, 1.05] : callState === 'listening' && !isMuted ? [1, 1.15, 1] : 1,
-                opacity: callState === 'speaking' ? [0.3, 0.7, 0.3] : callState === 'listening' && !isMuted ? [0.2, 0.5, 0.2] : 0.1,
+                scale:
+                  callState === 'speaking'
+                    ? [1, 1.25, 1.05]
+                    : callState === 'listening' && !isMuted
+                    ? [1, 1.15, 1]
+                    : 1,
+                opacity:
+                  callState === 'speaking'
+                    ? [0.3, 0.7, 0.3]
+                    : callState === 'listening' && !isMuted
+                    ? [0.2, 0.5, 0.2]
+                    : 0.1,
               }}
-              transition={{ repeat: Infinity, duration: callState === 'speaking' ? 1.6 : 2.5, ease: 'easeInOut' }}
+              transition={{
+                repeat: Infinity,
+                duration: callState === 'speaking' ? 1.6 : 2.5,
+                ease: 'easeInOut',
+              }}
               className={`absolute inset-0 rounded-full blur-2xl ${
                 callState === 'speaking'
                   ? 'bg-emerald-500/30'
@@ -235,54 +276,106 @@ export function VoiceCallModal({
                 </motion.p>
               ) : (
                 <p className="text-xs font-mono text-white/40">
-                  {callState === 'listening' ? 'Speak clearly into your microphone…' : ''}
+                  {callState === 'listening' ? 'Speak clearly into your microphone or tap the keyboard below to type…' : ''}
                 </p>
               )}
             </div>
           )}
         </div>
 
-        {/* Bottom Call Controls Bar */}
-        <div className="mx-auto flex w-full max-w-md items-center justify-around rounded-3xl border border-white/15 bg-white/10 p-3 shadow-lift backdrop-blur-xl">
-          {/* Mute Toggle Button */}
-          <motion.button
-            type="button"
-            onClick={onToggleMute}
-            whileTap={{ scale: 0.92 }}
-            aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-            className={`grid h-14 w-14 place-items-center rounded-2xl transition-all ${
-              isMuted
-                ? 'bg-danger text-white'
-                : 'bg-white/10 text-white hover:bg-white/20'
-            }`}
-          >
-            {isMuted ? <MicrophoneSlash size={24} weight="fill" /> : <Microphone size={24} weight="bold" />}
-          </motion.button>
+        {/* Bottom Section: Chat Input Drawer + Call Controls */}
+        <div className="mx-auto w-full max-w-lg">
+          {/* Expandable In-Call Chat Composer (Bypasses STT) */}
+          <AnimatePresence>
+            {isChatOpen && (
+              <motion.form
+                initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                transition={{ duration: 0.15 }}
+                onSubmit={handleSendMessage}
+                className="mb-3 flex items-center gap-2 rounded-2xl border border-white/20 bg-white/10 p-2 shadow-2xl backdrop-blur-xl"
+              >
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputText}
+                  onChange={e => setInputText(e.target.value)}
+                  placeholder="Type a message (skips speech-to-text)..."
+                  className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-white/40 outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputText.trim()}
+                  aria-label="Send message"
+                  className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent/90"
+                >
+                  <ArrowUp size={18} weight="bold" />
+                </button>
+              </motion.form>
+            )}
+          </AnimatePresence>
 
-          {/* End Call Button */}
-          <motion.button
-            type="button"
-            onClick={onEndCall}
-            whileTap={{ scale: 0.92 }}
-            whileHover={{ scale: 1.05 }}
-            aria-label="End voice call"
-            className="grid h-16 w-16 place-items-center rounded-full bg-danger text-white shadow-2xl transition-transform hover:bg-red-600"
-          >
-            <PhoneDisconnect size={28} weight="fill" />
-          </motion.button>
+          {/* Bottom Call Controls Dock */}
+          <div className="flex items-center justify-around rounded-3xl border border-white/15 bg-white/10 p-3 shadow-lift backdrop-blur-xl">
+            {/* Mute Toggle Button */}
+            <motion.button
+              type="button"
+              onClick={onToggleMute}
+              whileTap={{ scale: 0.92 }}
+              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+              title={isMuted ? 'Unmute microphone (Space)' : 'Mute microphone (Space)'}
+              className={`grid h-12 w-12 place-items-center rounded-2xl transition-all ${
+                isMuted
+                  ? 'bg-danger text-white'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              {isMuted ? <MicrophoneSlash size={22} weight="fill" /> : <Microphone size={22} weight="bold" />}
+            </motion.button>
 
-          {/* Interrupt / Cut-in Button */}
-          <motion.button
-            type="button"
-            onClick={onInterrupt}
-            disabled={callState !== 'speaking'}
-            whileTap={{ scale: 0.92 }}
-            aria-label="Interrupt and speak"
-            title="Interrupt Fahad and speak"
-            className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-white transition-all hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <Waveform size={24} weight="bold" />
-          </motion.button>
+            {/* In-Call Keyboard / Chat Toggle */}
+            <motion.button
+              type="button"
+              onClick={() => setIsChatOpen(prev => !prev)}
+              whileTap={{ scale: 0.92 }}
+              aria-label="Toggle text chat"
+              title={isChatOpen ? 'Close text input' : 'Type message instead of speaking'}
+              className={`grid h-12 w-12 place-items-center rounded-2xl transition-all ${
+                isChatOpen
+                  ? 'bg-accent text-white shadow-soft'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              <Keyboard size={22} weight={isChatOpen ? 'fill' : 'bold'} />
+            </motion.button>
+
+            {/* Interrupt / Cut-in Button */}
+            <motion.button
+              type="button"
+              onClick={onInterrupt}
+              disabled={callState !== 'speaking'}
+              whileTap={{ scale: 0.92 }}
+              aria-label="Interrupt Fahad"
+              title="Interrupt Fahad and speak"
+              className="grid h-12 w-12 place-items-center rounded-2xl bg-white/10 text-white transition-all hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <Waveform size={22} weight="bold" />
+            </motion.button>
+
+            {/* End Call Button */}
+            <motion.button
+              type="button"
+              onClick={onEndCall}
+              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.05 }}
+              aria-label="End voice call"
+              title="End Call (Esc)"
+              className="grid h-14 w-14 place-items-center rounded-full bg-danger text-white shadow-2xl transition-transform hover:bg-red-600"
+            >
+              <PhoneDisconnect size={24} weight="fill" />
+            </motion.button>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

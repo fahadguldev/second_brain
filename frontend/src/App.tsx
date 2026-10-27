@@ -165,6 +165,7 @@ function ChatApp() {
         onEndCall={voiceCall.endCall}
         onToggleMute={voiceCall.toggleMute}
         onInterrupt={voiceCall.interrupt}
+        onSendTextMessage={voiceCall.sendTextMessage}
       />
     </div>
   )

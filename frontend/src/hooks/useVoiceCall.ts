@@ -28,7 +28,6 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
   const silenceTimeoutRef = useRef<any>(null)
   const timerIntervalRef = useRef<any>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
 
   const isCallActiveRef = useRef(false)
   const isMutedRef = useRef(false)
@@ -160,6 +159,43 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     [onSendMessage, playAIResponse],
   )
 
+  // Direct In-Call Text Input: skips STT completely!
+  const sendTextMessage = useCallback(
+    async (textToSubmit: string) => {
+      const trimmed = textToSubmit.trim()
+      if (!trimmed || !isCallActiveRef.current) return
+
+      // Stop any speech playing currently (immediate barge-in)
+      stopActiveAudio()
+
+      // Cancel any pending speech recognition silence timer
+      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current)
+
+      // Update transcript and enter processing state (bypassing STT entirely!)
+      setCurrentTranscript(trimmed)
+      setCallState('processing')
+      setError(null)
+
+      try {
+        const answer = await onSendMessage(trimmed)
+        if (!isCallActiveRef.current) return
+        if (callStateRef.current !== 'processing') return
+
+        if (answer) {
+          await playAIResponse(answer)
+        } else {
+          setCallState('listening')
+          setCurrentTranscript('')
+        }
+      } catch (err: any) {
+        console.error('Processing typed message error:', err)
+        setError('Failed to process message')
+        setCallState('listening')
+      }
+    },
+    [onSendMessage, playAIResponse, stopActiveAudio],
+  )
+
   // Voice recognition loop (remains continuously hot to enable natural voice barge-in)
   const startRecognition = useCallback(() => {
     if (!isCallActiveRef.current || isMutedRef.current) return
@@ -207,11 +243,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         const combined = (finalText + interimText).trim()
 
         if (combined) {
-          // ========================================================
-          // NATURAL BARGE-IN (VOICE INTERRUPTION):
-          // If the AI is currently speaking and you start talking,
-          // instantly cut off the AI voice and start listening to you!
-          // ========================================================
+          // NATURAL BARGE-IN: If AI is speaking and user speaks, cut off immediately!
           if (callStateRef.current === 'speaking') {
             stopActiveAudio()
             setCallState('listening')
@@ -273,7 +305,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     setLastAIResponse('')
 
     try {
-      // Hardware Acoustic Echo Cancellation + Noise Suppression for clean full-duplex call
+      // Hardware Acoustic Echo Cancellation + Noise Suppression
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -327,7 +359,6 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     })
   }, [startRecognition, stopRecognition])
 
-  // Explicit interrupt action (if user clicks the button or speaks)
   const interrupt = useCallback(() => {
     stopActiveAudio()
     setCallState('listening')
@@ -347,5 +378,6 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     endCall,
     toggleMute,
     interrupt,
+    sendTextMessage,
   }
 }
