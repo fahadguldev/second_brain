@@ -3,11 +3,13 @@ import { lazy } from 'react'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
 import { useVoicePlayer } from './hooks/useVoicePlayer'
+import { useVoiceCall } from './hooks/useVoiceCall'
 import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
 import { Composer } from './components/Composer'
 import { EmptyState } from './components/EmptyState'
 import { MessageBubble } from './components/MessageBubble'
+import { VoiceCallModal } from './components/VoiceCallModal'
 
 // Split the admin console out of the chat bundle: visitors to / only
 // download the chat UI, /admin loads this chunk on demand.
@@ -37,6 +39,11 @@ function ChatApp() {
     stop: stopVoice,
   } = useVoicePlayer()
 
+  const voiceCall = useVoiceCall({
+    onSendMessage: sendMessage,
+    isThinking,
+  })
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const turns = messages.filter(m => m.role === 'user').length
@@ -54,7 +61,7 @@ function ChatApp() {
 
   const handlePick = (text: string) => {
     stopVoice()
-    sendMessage(text)
+    void sendMessage(text)
   }
 
   const closeSidebar = () => setSidebarOpen(false)
@@ -103,6 +110,7 @@ function ChatApp() {
             theme={theme}
             onToggleTheme={toggle}
             onMenu={() => setSidebarOpen(true)}
+            onStartCall={voiceCall.startCall}
           />
 
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
@@ -144,6 +152,20 @@ function ChatApp() {
           <Composer onSend={handlePick} disabled={isThinking} />
         </main>
       </div>
+
+      {/* 1-on-1 Voice Call Modal Overlay */}
+      <VoiceCallModal
+        isOpen={voiceCall.isCallActive}
+        callState={voiceCall.callState}
+        duration={voiceCall.duration}
+        isMuted={voiceCall.isMuted}
+        currentTranscript={voiceCall.currentTranscript}
+        lastAIResponse={voiceCall.lastAIResponse}
+        error={voiceCall.error}
+        onEndCall={voiceCall.endCall}
+        onToggleMute={voiceCall.toggleMute}
+        onInterrupt={voiceCall.interrupt}
+      />
     </div>
   )
 }
