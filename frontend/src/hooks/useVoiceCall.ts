@@ -66,7 +66,6 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
-      audioRef.current = null
     }
   }, [])
 
@@ -102,8 +101,12 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         }
 
         const objectUrl = URL.createObjectURL(blob)
-        const audio = new Audio(objectUrl)
-        audioRef.current = audio
+        let audio = audioRef.current
+        if (!audio) {
+          audio = new Audio()
+          audioRef.current = audio
+        }
+        audio.src = objectUrl
 
         audio.onended = () => {
           URL.revokeObjectURL(objectUrl)
