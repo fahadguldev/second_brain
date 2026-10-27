@@ -15,12 +15,14 @@ from src.config import settings
 from src.database import ensure_collection
 from src.llm import GenerationError
 from src.rag import generate_answer, generate_answer_stream
-from src.tts_service import (
-    get_tts_status,
+from fastapi import File, UploadFile
+from src.voice_service import (
+    get_voice_status,
     synthesize_speech,
     synthesize_speech_stream,
-    TTSConfigurationError,
-    TTSServiceError,
+    transcribe_audio,
+    VoiceConfigurationError,
+    VoiceServiceError,
 )
 
 router = APIRouter(prefix="/api", tags=["second-brain"])
@@ -252,15 +254,28 @@ class TTSRequest(BaseModel):
     voice_id: Optional[str] = Field(default=None, max_length=64)
 
 
-class TTSStatusResponse(BaseModel):
+class VoiceStatusResponse(BaseModel):
+    provider: str = "fish_audio"
     configured: bool
     voice_id: Optional[str] = None
-    model_id: Optional[str] = None
+    tts_model: Optional[str] = None
+    asr_model: Optional[str] = None
 
 
-@router.get("/tts/status", response_model=TTSStatusResponse)
-def tts_status() -> TTSStatusResponse:
-    return TTSStatusResponse(**get_tts_status())
+class STTResponse(BaseModel):
+    text: str
+    duration: float = 0.0
+    language: str = "en"
+
+
+@router.get("/voice/status", response_model=VoiceStatusResponse)
+def voice_status() -> VoiceStatusResponse:
+    return VoiceStatusResponse(**get_voice_status())
+
+
+@router.get("/tts/status", response_model=VoiceStatusResponse)
+def tts_status() -> VoiceStatusResponse:
+    return VoiceStatusResponse(**get_voice_status())
 
 
 @router.post("/tts")
@@ -275,14 +290,14 @@ async def generate_speech(req: TTSRequest):
                 "Cache-Control": "public, max-age=86400",
             },
         )
-    except TTSConfigurationError as exc:
+    except VoiceConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except TTSServiceError as exc:
+    except VoiceServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail=f"Fish Audio TTS failed: {str(exc)}") from exc
 
 
 @router.post("/tts/stream")
@@ -296,7 +311,26 @@ async def stream_speech(req: TTSRequest):
                 "X-Accel-Buffering": "no",
             },
         )
-    except TTSConfigurationError as exc:
+    except VoiceConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"TTS stream failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail=f"Fish Audio TTS stream failed: {str(exc)}") from exc
+
+
+@router.post("/stt", response_model=STTResponse)
+async def speech_to_text(file: UploadFile = File(...)):
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file provided.")
+    try:
+        result = await transcribe_audio(
+            audio_bytes=audio_bytes,
+            filename=file.filename or "audio.webm",
+        )
+        return STTResponse(**result)
+    except VoiceConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except VoiceServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Fish Audio ASR failed: {str(exc)}") from exc

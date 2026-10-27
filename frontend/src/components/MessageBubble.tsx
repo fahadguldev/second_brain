@@ -242,7 +242,7 @@ export function MessageBubble({
             )}
             {msg.info && <MetaRow info={msg.info} />}
 
-            {/* ElevenLabs Voice Playback Trigger */}
+            {/* Fish Audio Voice Playback Trigger */}
             {onPlayVoice && (
               <div className="mt-3 flex items-center gap-2 border-t border-line/60 pt-2.5">
                 <button
@@ -252,7 +252,7 @@ export function MessageBubble({
                   aria-label={
                     isPlayingVoice
                       ? 'Pause voice response'
-                      : 'Play voice response with ElevenLabs'
+                      : 'Play voice response with Fish Audio'
                   }
                   className={`group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
                     isPlayingVoice
