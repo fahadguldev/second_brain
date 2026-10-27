@@ -56,7 +56,8 @@ class Settings:
         [val.strip() for k, val in os.environ.items() if k.startswith("JSF_API_KEY") and val.strip()] +
         [k.strip() for k in os.getenv("JSF_API_KEYS", "").split(",") if k.strip()]
     ))
-    JSF_VOICE_ID: str = os.getenv("JSF_VOICE_ID", "")  # Portable jsf_... voice id
+    # Default to built-in JSF Labs default voice if not specified
+    JSF_VOICE_ID: str = os.getenv("JSF_VOICE_ID", "jsf_default_male")
     JSF_TTS_SPEED: float = float(os.getenv("JSF_TTS_SPEED", "1.0"))
 
     # Model names from Google AI Studio

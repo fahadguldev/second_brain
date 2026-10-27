@@ -66,7 +66,8 @@ async def synthesize_speech(
     if not clean_text:
         raise ValueError("Text cannot be empty.")
 
-    target_voice_id = voice_id or settings.JSF_VOICE_ID or ""
+    # Always ensure a valid voice_id (custom or fallback to built-in default voice)
+    target_voice_id = voice_id or settings.JSF_VOICE_ID or "jsf_default_male"
     target_speed = speed if speed is not None else settings.JSF_TTS_SPEED
 
     # Check local disk cache first to conserve requests
@@ -80,10 +81,9 @@ async def synthesize_speech(
     url = f"{JSF_API_BASE}/text-to-speech"
     payload: Dict[str, Any] = {
         "text": clean_text,
+        "voice_id": target_voice_id,
         "speed": target_speed,
     }
-    if target_voice_id:
-        payload["voice_id"] = target_voice_id
 
     total_keys = jsf_key_manager.total_keys()
     attempts = max(1, total_keys)
@@ -105,36 +105,39 @@ async def synthesize_speech(
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(url, json=payload, headers=headers)
 
+                # Extract readable error message from JSF Labs response if not 200/201
+                err_detail = response.text
+                retry_after = None
+                try:
+                    err_json = response.json()
+                    err_obj = err_json.get("error", {})
+                    err_detail = err_obj.get("message") or err_json.get("message") or response.text
+                    retry_after = err_obj.get("retryAfterSeconds")
+                except Exception:
+                    pass
+
+                try:
+                    if not retry_after:
+                        retry_after = int(response.headers.get("Retry-After", 0)) or None
+                except Exception:
+                    pass
+
                 # Handle Rate Limiting (429) or Auth Expiry / Insufficient Credits (401, 402, 403)
                 if response.status_code in (429, 401, 402, 403):
-                    retry_after = None
-                    try:
-                        retry_after = int(response.headers.get("Retry-After", 0)) or None
-                    except Exception:
-                        pass
-                    if not retry_after:
-                        try:
-                            err_data = response.json()
-                            retry_after = err_data.get("error", {}).get("retryAfterSeconds")
-                        except Exception:
-                            pass
-
-                    err_msg = f"Key ...{active_key[-6:]} returned status {response.status_code}: {response.text}"
+                    err_msg = f"Key ...{active_key[-6:]} returned [{response.status_code}]: {err_detail}"
                     logger.warning(f"Rotating JSF Labs key: {err_msg}")
                     jsf_key_manager.mark_key_failure(
                         active_key,
                         status_code=response.status_code,
-                        reason=response.text,
+                        reason=err_detail,
                         retry_after_seconds=retry_after,
                     )
-                    errors.append(f"Key ...{active_key[-6:]} [{response.status_code}]")
-                    # Try next key in the pool
+                    errors.append(f"Key ...{active_key[-6:]} [{response.status_code}]: {err_detail}")
                     continue
 
                 if response.status_code not in (200, 201):
-                    err_text = response.text
-                    jsf_key_manager.mark_key_failure(active_key, status_code=response.status_code, reason=err_text)
-                    errors.append(f"Key ...{active_key[-6:]} [{response.status_code}]: {err_text}")
+                    jsf_key_manager.mark_key_failure(active_key, status_code=response.status_code, reason=err_detail)
+                    errors.append(f"Key ...{active_key[-6:]} [{response.status_code}]: {err_detail}")
                     continue
 
                 # Mark key as healthy
