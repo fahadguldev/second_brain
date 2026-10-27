@@ -50,11 +50,14 @@ class Settings:
         if k.startswith("GEMINI_API_KEY") and val.strip()
     ))
 
-    # Fish Audio API (TTS & ASR)
-    FISH_AUDIO_API_KEY: str = os.getenv("FISH_AUDIO_API_KEY", "")
-    FISH_AUDIO_VOICE_ID: str = os.getenv("FISH_AUDIO_VOICE_ID", "")  # Cloned voice reference_id
-    FISH_AUDIO_TTS_MODEL: str = os.getenv("FISH_AUDIO_TTS_MODEL", "speech-1.5")
-    FISH_AUDIO_ASR_MODEL: str = os.getenv("FISH_AUDIO_ASR_MODEL", "transcribe-1-pro")
+    # JSF Labs Voice API (TTS)
+    JSF_API_KEY: str = os.getenv("JSF_API_KEY", "")
+    JSF_API_KEYS: list[str] = list(dict.fromkeys(
+        [val.strip() for k, val in os.environ.items() if k.startswith("JSF_API_KEY") and val.strip()] +
+        [k.strip() for k in os.getenv("JSF_API_KEYS", "").split(",") if k.strip()]
+    ))
+    JSF_VOICE_ID: str = os.getenv("JSF_VOICE_ID", "")  # Portable jsf_... voice id
+    JSF_TTS_SPEED: float = float(os.getenv("JSF_TTS_SPEED", "1.0"))
 
     # Model names from Google AI Studio
     # - Embedding model: models/gemini-embedding-2 produces 3072-dim vectors (matches knowledge_base)
