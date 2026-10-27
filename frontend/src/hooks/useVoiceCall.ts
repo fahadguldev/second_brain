@@ -28,11 +28,12 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
   const silenceTimeoutRef = useRef<any>(null)
   const timerIntervalRef = useRef<any>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   const isCallActiveRef = useRef(false)
   const isMutedRef = useRef(false)
   const callStateRef = useRef<CallState>('connecting')
 
-  // Keep refs in sync with state for event listeners
   useEffect(() => {
     isCallActiveRef.current = isCallActive
   }, [isCallActive])
@@ -45,7 +46,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     callStateRef.current = callState
   }, [callState])
 
-  // Call duration counter
+  // Call duration timer
   useEffect(() => {
     if (isCallActive) {
       setDuration(0)
@@ -64,6 +65,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
+      audioRef.current = null
     }
   }, [])
 
@@ -92,17 +94,20 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         }
 
         const blob = await res.blob()
+        if (!isCallActiveRef.current || callStateRef.current !== 'speaking') {
+          return // User interrupted while TTS was downloading
+        }
+
         const objectUrl = URL.createObjectURL(blob)
         const audio = new Audio(objectUrl)
         audioRef.current = audio
 
         audio.onended = () => {
           URL.revokeObjectURL(objectUrl)
-          // Audio finished: return to listening for user response!
-          if (isCallActiveRef.current) {
+          // Audio finished: return smoothly to listening for the user!
+          if (isCallActiveRef.current && callStateRef.current === 'speaking') {
             setCallState('listening')
             setCurrentTranscript('')
-            startRecognition()
           }
         }
 
@@ -110,7 +115,6 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
           URL.revokeObjectURL(objectUrl)
           if (isCallActiveRef.current) {
             setCallState('listening')
-            startRecognition()
           }
         }
 
@@ -118,11 +122,9 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
       } catch (err: any) {
         console.error('Call voice playback failed:', err)
         setError(err?.message || 'Could not synthesize voice')
-        // Recover back to listening after brief pause
         setTimeout(() => {
-          if (isCallActiveRef.current) {
+          if (isCallActiveRef.current && callStateRef.current === 'speaking') {
             setCallState('listening')
-            startRecognition()
           }
         }, 1500)
       }
@@ -133,7 +135,6 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
   const processUserSpeech = useCallback(
     async (textToSubmit: string) => {
       if (!textToSubmit.trim() || !isCallActiveRef.current) return
-      stopRecognition()
       setCallState('processing')
       setError(null)
 
@@ -141,24 +142,25 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         const answer = await onSendMessage(textToSubmit.trim())
         if (!isCallActiveRef.current) return
 
+        // If user interrupted during processing, don't speak old answer
+        if (callStateRef.current !== 'processing') return
+
         if (answer) {
           await playAIResponse(answer)
         } else {
-          // If no answer generated, resume listening
           setCallState('listening')
           setCurrentTranscript('')
-          startRecognition()
         }
       } catch (err: any) {
         console.error('Processing speech error:', err)
         setError('Failed to process message')
         setCallState('listening')
-        startRecognition()
       }
     },
     [onSendMessage, playAIResponse],
   )
 
+  // Voice recognition loop (remains continuously hot to enable natural voice barge-in)
   const startRecognition = useCallback(() => {
     if (!isCallActiveRef.current || isMutedRef.current) return
     const win = typeof window !== 'undefined' ? (window as unknown as IWindow) : null
@@ -184,15 +186,11 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
       recognition.lang = 'en-US'
 
       recognition.onstart = () => {
-        if (isCallActiveRef.current && callStateRef.current !== 'speaking') {
-          setCallState('listening')
-        }
+        // Recognition started
       }
 
       recognition.onresult = (event: any) => {
-        if (isMutedRef.current || callStateRef.current === 'speaking' || callStateRef.current === 'processing') {
-          return
-        }
+        if (isMutedRef.current) return
 
         let interimText = ''
         let finalText = ''
@@ -207,36 +205,44 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         }
 
         const combined = (finalText + interimText).trim()
+
         if (combined) {
+          // ========================================================
+          // NATURAL BARGE-IN (VOICE INTERRUPTION):
+          // If the AI is currently speaking and you start talking,
+          // instantly cut off the AI voice and start listening to you!
+          // ========================================================
+          if (callStateRef.current === 'speaking') {
+            stopActiveAudio()
+            setCallState('listening')
+            setLastAIResponse('')
+          }
+
           setCurrentTranscript(combined)
 
           // Reset silence timer on every spoken word
           if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current)
           silenceTimeoutRef.current = setTimeout(() => {
-            // User stopped talking for 1.3 seconds: auto-submit!
+            // User paused for 1.2s: auto-submit to the brain!
             if (combined.trim() && isCallActiveRef.current) {
               void processUserSpeech(combined.trim())
             }
-          }, 1300)
+          }, 1200)
         }
       }
 
       recognition.onerror = (event: any) => {
         if (event.error === 'no-speech') return
-        console.warn('Speech recognition warning:', event.error)
+        console.warn('Speech recognition notice:', event.error)
       }
 
       recognition.onend = () => {
-        // Automatically restart recognition if still in listening state
-        if (
-          isCallActiveRef.current &&
-          !isMutedRef.current &&
-          callStateRef.current === 'listening'
-        ) {
+        // Auto-restart recognition so mic never drops out during the call
+        if (isCallActiveRef.current && !isMutedRef.current) {
           try {
             recognition.start()
           } catch {
-            // ignore restart collision
+            // ignore collision
           }
         }
       }
@@ -246,7 +252,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     } catch (err) {
       console.warn('Could not start recognition:', err)
     }
-  }, [processUserSpeech])
+  }, [processUserSpeech, stopActiveAudio])
 
   const stopRecognition = useCallback(() => {
     if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current)
@@ -267,11 +273,17 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     setLastAIResponse('')
 
     try {
-      // Request mic permission
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Hardware Acoustic Echo Cancellation + Noise Suppression for clean full-duplex call
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
       audioStreamRef.current = stream
 
-      // Pre-warm audio context / unlock audio playback on mobile browsers
+      // Pre-warm audio element for mobile browser autoplay unlock
       const dummyAudio = new Audio()
       dummyAudio.play().catch(() => {})
 
@@ -315,6 +327,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
     })
   }, [startRecognition, stopRecognition])
 
+  // Explicit interrupt action (if user clicks the button or speaks)
   const interrupt = useCallback(() => {
     stopActiveAudio()
     setCallState('listening')
