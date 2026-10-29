@@ -24,7 +24,7 @@ export function ScrollToBottomButton({
           transition={{ type: 'spring', stiffness: 400, damping: 25 }}
           aria-label="Scroll to newest messages"
           title="Scroll to bottom"
-          className="fixed bottom-24 right-6 z-30 inline-flex items-center gap-1.5 rounded-full border border-line-strong/60 bg-surface/90 px-3 py-2 text-xs font-semibold text-ink shadow-lift backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent sm:right-10"
+          className="fixed bottom-24 right-6 z-30 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-raised/90 px-3 py-1.5 text-xs font-medium text-ink shadow-lift backdrop-blur-xl transition-all hover:border-white/20 sm:right-10"
         >
           <motion.span
             animate={{ y: [0, 2, 0] }}

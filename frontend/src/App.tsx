@@ -138,7 +138,7 @@ function ChatApp() {
       </AnimatePresence>
 
       {/* Desktop Layout Grid */}
-      <div className="mx-auto grid h-full w-full max-w-[1440px] grid-cols-1 overflow-hidden lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="mx-auto grid h-full w-full max-w-[1440px] grid-cols-1 overflow-hidden lg:grid-cols-[250px_minmax(0,1fr)]">
         <div className="hidden lg:flex lg:flex-col lg:overflow-y-auto">
           {sidebar}
         </div>
@@ -166,7 +166,7 @@ function ChatApp() {
               <EmptyState onPick={handlePick} />
             ) : (
               <>
-                <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+                <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
                   {messages.map(msg => (
                     <MessageBubble
                       key={msg.id}
@@ -180,7 +180,7 @@ function ChatApp() {
                 </div>
 
                 {turns > 0 && (
-                  <div className="mx-auto mt-8 flex max-w-3xl justify-center">
+                  <div className="mx-auto mt-6 flex max-w-2xl justify-center">
                     <motion.button
                       whileHover={{ scale: 1.04, y: -1 }}
                       whileTap={{ scale: 0.96 }}

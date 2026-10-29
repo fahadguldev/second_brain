@@ -1,6 +1,5 @@
 import {
   CircleNotch,
-  Lightbulb,
   Pause,
   SpeakerHigh,
   WarningCircle,
@@ -35,139 +34,110 @@ export function MessageBubble({
   if (msg.pending) {
     return (
       <motion.div
-        initial={reduce ? false : { opacity: 0, y: 10 }}
+        initial={reduce ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-start gap-2.5"
+        className="flex items-center gap-2.5 py-2 text-muted"
       >
-        <div className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-accent/30 bg-accent/10 text-accent shadow-xs">
-          <Lightbulb size={14} weight="duotone" />
-        </div>
-        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-line/70 bg-surface/90 px-4 py-3 shadow-soft backdrop-blur-sm">
-          <ThinkingDots />
-          <span className="font-mono text-xs text-muted">Retrieving from memory…</span>
+        <ThinkingDots />
+        <span className="font-mono text-xs">Retrieving knowledge…</span>
+      </motion.div>
+    )
+  }
+
+  // User Message
+  if (isUser) {
+    return (
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+        className="group flex justify-end py-1.5"
+      >
+        <div className="flex max-w-[85%] items-end gap-2">
+          <div className="rounded-2xl rounded-tr-xs border border-white/10 bg-raised px-4 py-2.5 text-[14px] leading-relaxed text-ink shadow-xs sm:text-[15px]">
+            <p className="whitespace-pre-wrap">{msg.text}</p>
+          </div>
+          <div className="opacity-0 transition-opacity group-hover:opacity-100">
+            <CopyButton text={msg.text} title="Copy" />
+          </div>
         </div>
       </motion.div>
     )
   }
 
+  // Assistant Message (Clean, calm, uncluttered reading canvas)
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, y: 12, scale: 0.99 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className={`group relative flex items-start gap-2.5 ${
-        isUser ? 'justify-end' : 'justify-start'
-      }`}
+      initial={reduce ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className="group flex w-full flex-col py-3"
     >
-      {/* Assistant Avatar */}
-      {!isUser && (
-        <div className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-accent/30 bg-accent/10 text-accent shadow-xs">
-          <Lightbulb size={14} weight="duotone" />
+      {/* Error state */}
+      {msg.error && (
+        <div className="mb-2 flex items-center gap-1.5 text-xs text-danger">
+          <WarningCircle size={14} weight="duotone" />
+          <span>Error retrieving response</span>
         </div>
       )}
 
-      {/* Message Card Container */}
-      <div
-        className={`relative max-w-[min(44rem,88%)] rounded-2xl px-4 py-3 text-[14px] leading-relaxed transition-all sm:text-[15px] ${
-          isUser
-            ? 'rounded-tr-sm bg-accent text-accent-ink shadow-soft'
-            : msg.error
-            ? 'rounded-tl-sm border border-danger/30 bg-danger-soft text-danger'
-            : 'rounded-tl-sm border border-line/70 bg-surface/90 text-ink shadow-soft backdrop-blur-sm'
-        }`}
-      >
-        {/* Error Flag */}
-        {msg.error && (
-          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em]">
-            <WarningCircle size={14} weight="duotone" />
-            <span>Error occurred</span>
-          </p>
-        )}
-
-        {/* Message Text Content */}
+      {/* Main Response Typography */}
+      <div className="text-[15px] leading-relaxed text-ink/90 sm:text-[15.5px]">
         <p className="whitespace-pre-wrap">{msg.text}</p>
+      </div>
 
-        {/* Assistant Rich Metadata and Sources */}
-        {!isUser && !msg.error && (
-          <>
-            {msg.info?.sources && msg.info.sources.length > 0 && (
+      {/* Embedded Sources & Media */}
+      {msg.info?.sources && msg.info.sources.length > 0 && (
+        <>
+          <VideoRecommendations sources={msg.info.sources} />
+          <SourceList sources={msg.info.sources} />
+        </>
+      )}
+
+      {/* Quiet Bottom Action Bar */}
+      <div className="mt-3 flex items-center gap-3 text-muted">
+        {onPlayVoice && (
+          <button
+            type="button"
+            onClick={() => onPlayVoice(msg.id, msg.text)}
+            disabled={isVoiceLoading}
+            aria-label={
+              isPlayingVoice ? 'Pause voice' : 'Listen to response'
+            }
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors ${
+              isPlayingVoice
+                ? 'bg-accent/15 text-accent'
+                : 'text-muted hover:bg-raised hover:text-ink'
+            }`}
+          >
+            {isVoiceLoading ? (
               <>
-                <VideoRecommendations sources={msg.info.sources} />
-                <SourceList sources={msg.info.sources} />
+                <CircleNotch size={12} className="animate-spin text-accent" />
+                <span className="text-[11px]">Synthesizing…</span>
+              </>
+            ) : isPlayingVoice ? (
+              <>
+                <Pause size={12} weight="fill" className="text-accent" />
+                <span className="text-[11px]">Pause</span>
+                <AudioWaveform isPlaying={true} barCount={4} size="sm" />
+              </>
+            ) : (
+              <>
+                <SpeakerHigh size={12} weight="bold" />
+                <span className="text-[11px]">Listen</span>
               </>
             )}
-
-            {msg.info && <MetaRow info={msg.info} />}
-
-            {/* Bottom Actions Bar (Voice Playback & Copy) */}
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-2.5">
-              <div className="flex items-center gap-2">
-                {/* JSF Labs Voice Playback Trigger with Animated Waveform */}
-                {onPlayVoice && (
-                  <motion.button
-                    type="button"
-                    onClick={() => onPlayVoice(msg.id, msg.text)}
-                    disabled={isVoiceLoading}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.96 }}
-                    aria-label={
-                      isPlayingVoice
-                        ? 'Pause voice response'
-                        : 'Play voice response with JSF Labs'
-                    }
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
-                      isPlayingVoice
-                        ? 'border-accent bg-accent/15 text-accent shadow-xs'
-                        : isVoiceLoading
-                        ? 'cursor-wait border-accent/40 bg-accent/5 text-accent opacity-90'
-                        : 'border-line/70 bg-raised/50 text-muted hover:border-accent/40 hover:text-accent'
-                    }`}
-                  >
-                    {isVoiceLoading ? (
-                      <>
-                        <CircleNotch size={12} className="animate-spin text-accent" />
-                        <span>Generating voice…</span>
-                      </>
-                    ) : isPlayingVoice ? (
-                      <>
-                        <Pause size={12} weight="fill" className="text-accent" />
-                        <span>Pause</span>
-                        <AudioWaveform isPlaying={true} barCount={4} size="sm" />
-                      </>
-                    ) : (
-                      <>
-                        <SpeakerHigh size={13} weight="bold" />
-                        <span>Listen</span>
-                      </>
-                    )}
-                  </motion.button>
-                )}
-
-                {voiceError && (
-                  <span
-                    className="max-w-[200px] truncate text-[10px] text-danger"
-                    title={voiceError}
-                  >
-                    {voiceError}
-                  </span>
-                )}
-              </div>
-
-              {/* Copy Message Action */}
-              <CopyButton text={msg.text} title="Copy response" />
-            </div>
-          </>
+          </button>
         )}
 
-        {/* Copy for user message */}
-        {isUser && (
-          <div className="mt-1.5 flex justify-end">
-            <CopyButton
-              text={msg.text}
-              title="Copy your message"
-              className="border-accent-ink/20 bg-accent-ink/10 text-accent-ink hover:border-accent-ink/40 hover:text-accent-ink"
-            />
-          </div>
+        <CopyButton text={msg.text} title="Copy response" />
+
+        {msg.info && <MetaRow info={msg.info} />}
+
+        {voiceError && (
+          <span className="max-w-[200px] truncate text-[10px] text-danger" title={voiceError}>
+            {voiceError}
+          </span>
         )}
       </div>
     </motion.div>

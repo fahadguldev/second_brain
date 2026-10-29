@@ -41,7 +41,7 @@ export function CopyButton({
       whileTap={{ scale: 0.92 }}
       aria-label={copied ? 'Copied to clipboard' : title}
       title={copied ? 'Copied!' : title}
-      className={`relative grid h-7 w-7 place-items-center rounded-lg border border-line/60 bg-surface/80 text-muted backdrop-blur-sm transition-colors hover:border-accent/40 hover:text-ink ${className}`}
+      className={`relative grid h-7 w-7 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-ink ${className}`}
     >
       <AnimatePresence mode="wait" initial={false}>
         {copied ? (
