@@ -14,7 +14,7 @@ interface UseVoiceCallProps {
   isThinking: boolean
 }
 
-export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
+export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoiceCallProps) {
   const [isCallActive, setIsCallActive] = useState(false)
   const [callState, setCallState] = useState<CallState>('connecting')
   const [duration, setDuration] = useState(0)
@@ -160,7 +160,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         if (!isCallActiveRef.current) return
 
         // If user hung up or explicitly interrupted, don't speak
-        if (callStateRef.current !== 'processing') {
+        if ((callStateRef.current as CallState) !== 'processing') {
           console.log('[VoiceCall] State changed during RAG generation:', callStateRef.current)
           return
         }
@@ -207,7 +207,7 @@ export function useVoiceCall({ onSendMessage, isThinking }: UseVoiceCallProps) {
         console.log('[VoiceCall] Submitting typed query to RAG (STT bypassed):', trimmed)
         const answer = await onSendMessage(trimmed)
         if (!isCallActiveRef.current) return
-        if (callStateRef.current !== 'processing') return
+        if ((callStateRef.current as CallState) !== 'processing') return
 
         if (answer) {
           console.log('[VoiceCall] RAG answered typed query, starting TTS playback...')

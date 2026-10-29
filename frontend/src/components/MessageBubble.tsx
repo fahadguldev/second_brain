@@ -1,172 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowSquareOut,
-  CaretDown,
   CircleNotch,
-  FileText,
   Lightbulb,
   Pause,
-  Play,
   SpeakerHigh,
   WarningCircle,
 } from '@phosphor-icons/react'
 import { motion, useReducedMotion } from 'motion/react'
-import type { ChatMessage, SourceItem } from '../types'
+import type { ChatMessage } from '../types'
 import { ThinkingDots } from './ThinkingDots'
-
-function sourceMetadata(item: SourceItem) {
-  return item.payload?.metadata ?? item.metadata
-}
-
-function sourceLabel(item: SourceItem): string {
-  const type = sourceMetadata(item)?.source?.type
-  if (!type) return 'record'
-  const short = type.replace(/_/g, ' ')
-  return short.length > 24 ? short.slice(0, 24) + '…' : short
-}
-
-function scorePct(score?: number): string {
-  if (typeof score !== 'number') return '—'
-  return `${Math.round(score * 100)}%`
-}
-
-interface VideoPreview {
-  url: string
-  title: string
-}
-
-function VideoRecommendations({ sources }: { sources: SourceItem[] }) {
-  const videoUrls = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          sources
-            .map(source => sourceMetadata(source)?.source?.url)
-            .filter((url): url is string => Boolean(url)),
-        ),
-      ),
-    [sources],
-  )
-  const [videos, setVideos] = useState<VideoPreview[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-
-    // Initial state with a friendly default title while fetching oEmbed metadata
-    const initialVideos: VideoPreview[] = videoUrls.slice(0, 3).map(url => ({
-      url,
-      title: 'Watch related video on TikTok',
-    }))
-    setVideos(initialVideos)
-
-    Promise.all(
-      videoUrls.slice(0, 3).map(async url => {
-        if (!url.includes('tiktok.com/')) {
-          return { url, title: 'Watch related video' } satisfies VideoPreview
-        }
-        try {
-          const response = await fetch(
-            `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`,
-          )
-          if (!response.ok) return { url, title: 'Watch related video on TikTok' }
-          const data = await response.json()
-          return {
-            url,
-            title: data.title?.trim() || 'Watch related video on TikTok',
-          } satisfies VideoPreview
-        } catch {
-          return { url, title: 'Watch related video on TikTok' } satisfies VideoPreview
-        }
-      }),
-    ).then(results => {
-      if (!cancelled) setVideos(results)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [videoUrls])
-
-  if (videos.length === 0) return null
-
-  return (
-    <section className="mt-3 border-t border-line/60 pt-2.5">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-        Related video{videos.length > 1 ? 's' : ''}
-      </p>
-      <div className="flex flex-col gap-2">
-        {videos.map(video => (
-          <a
-            key={video.url}
-            href={video.url}
-            target="_blank"
-            rel="noreferrer"
-            className="group inline-flex items-center gap-2 rounded-lg border border-line/70 bg-raised/40 px-3 py-2 text-sm font-medium text-accent transition-all hover:border-accent/50 hover:bg-accent/10 hover:underline"
-          >
-            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
-              <Play size={11} weight="fill" />
-            </span>
-            <span className="line-clamp-1 flex-1">{video.title}</span>
-            <ArrowSquareOut
-              size={14}
-              className="shrink-0 text-muted opacity-60 transition-opacity group-hover:opacity-100"
-            />
-          </a>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function SourceList({ sources }: { sources: NonNullable<ChatMessage['info']>['sources'] }) {
-  const [open, setOpen] = useState(false)
-  if (!sources || sources.length === 0) return null
-
-  return (
-    <div className="mt-3 border-t border-line/60 pt-3">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted transition-colors hover:text-accent"
-      >
-        <FileText size={12} />
-        {sources.length} grounded source{sources.length > 1 ? 's' : ''}
-        <CaretDown
-          size={12}
-          className={`transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {open && (
-        <ul className="mt-2 space-y-1.5">
-          {sources.map((s, i) => (
-            <li
-              key={i}
-              className="flex items-center gap-2 rounded-md bg-raised/60 px-2 py-1.5 text-xs"
-            >
-              <span className="font-mono text-[10px] text-muted">{i + 1}</span>
-              <span className="max-w-[60%] truncate">{sourceLabel(s)}</span>
-              <span className="ml-auto shrink-0 rounded border border-accent/25 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent">
-                {scorePct(s.score)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-function MetaRow({ info }: { info: NonNullable<ChatMessage['info']> }) {
-  const parts: string[] = []
-  if (typeof info.latency === 'number') parts.push(`${info.latency.toFixed(1)}s`)
-  if (info.model) parts.push(info.model)
-  if (info.embeddingModel) parts.push(info.embeddingModel.replace('models/', ''))
-  if (parts.length === 0) return null
-
-  return (
-    <p className="mt-3 font-mono text-[10px] tracking-tight text-muted">{parts.join(' · ')}</p>
-  )
-}
+import { AudioWaveform } from './ui/AudioWaveform'
+import { CopyButton } from './ui/CopyButton'
+import { MetaRow } from './chat/MetaRow'
+import { SourceList } from './chat/SourceList'
+import { VideoRecommendations } from './chat/VideoRecommendations'
 
 export interface MessageBubbleProps {
   msg: ChatMessage
@@ -189,15 +35,16 @@ export function MessageBubble({
   if (msg.pending) {
     return (
       <motion.div
-        initial={reduce ? false : { opacity: 0, y: 8 }}
+        initial={reduce ? false : { opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-end gap-2"
+        className="flex items-start gap-2.5"
       >
-        <div className="pointer-events-none grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
+        <div className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-accent/30 bg-accent/10 text-accent shadow-xs">
           <Lightbulb size={14} weight="duotone" />
         </div>
-        <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-3 shadow-soft">
+        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-line/70 bg-surface/90 px-4 py-3 shadow-soft backdrop-blur-sm">
           <ThinkingDots />
+          <span className="font-mono text-xs text-muted">Retrieving from memory…</span>
         </div>
       </motion.div>
     )
@@ -205,33 +52,42 @@ export function MessageBubble({
 
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={reduce ? false : { opacity: 0, y: 12, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className={`flex items-end gap-2 ${isUser ? 'justify-end' : ''}`}
+      className={`group relative flex items-start gap-2.5 ${
+        isUser ? 'justify-end' : 'justify-start'
+      }`}
     >
+      {/* Assistant Avatar */}
       {!isUser && (
-        <div className="pointer-events-none grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent/10 text-accent">
+        <div className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-accent/30 bg-accent/10 text-accent shadow-xs">
           <Lightbulb size={14} weight="duotone" />
         </div>
       )}
 
+      {/* Message Card Container */}
       <div
-        className={`max-w-[min(42rem,88%)] rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
+        className={`relative max-w-[min(44rem,88%)] rounded-2xl px-4 py-3 text-[14px] leading-relaxed transition-all sm:text-[15px] ${
           isUser
-            ? 'rounded-br-md bg-accent text-accent-ink'
+            ? 'rounded-tr-sm bg-accent text-accent-ink shadow-soft'
             : msg.error
-              ? 'rounded-bl-md border border-danger/30 bg-danger-soft text-danger'
-              : 'rounded-bl-md border border-line bg-surface shadow-soft'
+            ? 'rounded-tl-sm border border-danger/30 bg-danger-soft text-danger'
+            : 'rounded-tl-sm border border-line/70 bg-surface/90 text-ink shadow-soft backdrop-blur-sm'
         }`}
       >
+        {/* Error Flag */}
         {msg.error && (
           <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em]">
-            <WarningCircle size={13} weight="duotone" />
-            Error
+            <WarningCircle size={14} weight="duotone" />
+            <span>Error occurred</span>
           </p>
         )}
+
+        {/* Message Text Content */}
         <p className="whitespace-pre-wrap">{msg.text}</p>
+
+        {/* Assistant Rich Metadata and Sources */}
         {!isUser && !msg.error && (
           <>
             {msg.info?.sources && msg.info.sources.length > 0 && (
@@ -240,65 +96,78 @@ export function MessageBubble({
                 <SourceList sources={msg.info.sources} />
               </>
             )}
+
             {msg.info && <MetaRow info={msg.info} />}
 
-            {/* JSF Labs Voice Playback Trigger */}
-            {onPlayVoice && (
-              <div className="mt-3 flex items-center gap-2 border-t border-line/60 pt-2.5">
-                <button
-                  type="button"
-                  onClick={() => onPlayVoice(msg.id, msg.text)}
-                  disabled={isVoiceLoading}
-                  aria-label={
-                    isPlayingVoice
-                      ? 'Pause voice response'
-                      : 'Play voice response with JSF Labs'
-                  }
-                  className={`group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
-                    isPlayingVoice
-                      ? 'border-accent bg-accent/15 text-accent shadow-sm'
-                      : isVoiceLoading
-                      ? 'border-accent/40 bg-accent/5 text-accent opacity-85 cursor-wait'
-                      : 'border-line/70 bg-raised/50 text-muted hover:border-accent/40 hover:text-accent'
-                  }`}
-                >
-                  {isVoiceLoading ? (
-                    <>
-                      <CircleNotch size={12} className="animate-spin text-accent" />
-                      <span>Generating voice…</span>
-                    </>
-                  ) : isPlayingVoice ? (
-                    <>
-                      <Pause size={12} weight="fill" className="text-accent" />
-                      <span>Pause voice</span>
-                      <span className="ml-0.5 flex h-2.5 items-end gap-0.5">
-                        <span className="h-1.5 w-0.5 rounded-full bg-accent animate-pulse" />
-                        <span className="h-2.5 w-0.5 rounded-full bg-accent animate-bounce" />
-                        <span className="h-1 w-0.5 rounded-full bg-accent animate-pulse" />
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <SpeakerHigh
-                        size={13}
-                        weight="bold"
-                        className="transition-transform group-hover:scale-110"
-                      />
-                      <span>Listen</span>
-                    </>
-                  )}
-                </button>
+            {/* Bottom Actions Bar (Voice Playback & Copy) */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-2.5">
+              <div className="flex items-center gap-2">
+                {/* JSF Labs Voice Playback Trigger with Animated Waveform */}
+                {onPlayVoice && (
+                  <motion.button
+                    type="button"
+                    onClick={() => onPlayVoice(msg.id, msg.text)}
+                    disabled={isVoiceLoading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    aria-label={
+                      isPlayingVoice
+                        ? 'Pause voice response'
+                        : 'Play voice response with JSF Labs'
+                    }
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                      isPlayingVoice
+                        ? 'border-accent bg-accent/15 text-accent shadow-xs'
+                        : isVoiceLoading
+                        ? 'cursor-wait border-accent/40 bg-accent/5 text-accent opacity-90'
+                        : 'border-line/70 bg-raised/50 text-muted hover:border-accent/40 hover:text-accent'
+                    }`}
+                  >
+                    {isVoiceLoading ? (
+                      <>
+                        <CircleNotch size={12} className="animate-spin text-accent" />
+                        <span>Generating voice…</span>
+                      </>
+                    ) : isPlayingVoice ? (
+                      <>
+                        <Pause size={12} weight="fill" className="text-accent" />
+                        <span>Pause</span>
+                        <AudioWaveform isPlaying={true} barCount={4} size="sm" />
+                      </>
+                    ) : (
+                      <>
+                        <SpeakerHigh size={13} weight="bold" />
+                        <span>Listen</span>
+                      </>
+                    )}
+                  </motion.button>
+                )}
+
                 {voiceError && (
                   <span
-                    className="max-w-[240px] truncate text-[10px] text-danger"
+                    className="max-w-[200px] truncate text-[10px] text-danger"
                     title={voiceError}
                   >
                     {voiceError}
                   </span>
                 )}
               </div>
-            )}
+
+              {/* Copy Message Action */}
+              <CopyButton text={msg.text} title="Copy response" />
+            </div>
           </>
+        )}
+
+        {/* Copy for user message */}
+        {isUser && (
+          <div className="mt-1.5 flex justify-end">
+            <CopyButton
+              text={msg.text}
+              title="Copy your message"
+              className="border-accent-ink/20 bg-accent-ink/10 text-accent-ink hover:border-accent-ink/40 hover:text-accent-ink"
+            />
+          </div>
         )}
       </div>
     </motion.div>
