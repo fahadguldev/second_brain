@@ -67,6 +67,7 @@ class HealthResponse(BaseModel):
     qdrant: str
     embedding_model: str
     generation_model: str
+    hybrid_search: Optional[bool] = None
 
 
 @router.on_event("startup")
@@ -90,6 +91,7 @@ def health_check() -> HealthResponse:
         qdrant=qdrant_status,
         embedding_model=settings.EMBEDDING_MODEL,
         generation_model=settings.GENERATION_MODEL,
+        hybrid_search=settings.RAG_HYBRID_SEARCH,
     )
 
 

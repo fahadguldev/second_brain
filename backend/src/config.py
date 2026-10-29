@@ -83,6 +83,12 @@ class Settings:
     # letting legacy topics (e.g. university advice in DMs) reach the context.
     RAG_NOISE_MAX: int = int(os.getenv("RAG_NOISE_MAX", "4"))
 
+    # Hybrid Search (Dense + Sparse BM25)
+    RAG_HYBRID_SEARCH: bool = (os.getenv("RAG_HYBRID_SEARCH", "True")).lower() == "true"
+    SPARSE_MODEL: str = os.getenv("SPARSE_MODEL", "Qdrant/bm25")
+    SPARSE_VECTOR_NAME: str = os.getenv("SPARSE_VECTOR_NAME", "bm25")
+    RAG_HYBRID_SCORE_THRESHOLD: float = float(os.getenv("RAG_HYBRID_SCORE_THRESHOLD", "0.25"))
+
     # Rate limiting
     RATE_LIMIT_PER_MIN: int = int(os.getenv("RATE_LIMIT_PER_MIN", "60"))
     RATE_LIMIT_PER_DAY: int = int(os.getenv("RATE_LIMIT_PER_DAY", "1000"))

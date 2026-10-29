@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from src.classifier import classify_topics
 from src.database import ensure_collection, insert_points, search_points
 from src.embeddings import embedding_generator
+from src.sparse_embeddings import sparse_embedding_generator
 from src.llm import llm
 from src.config import settings
 
@@ -170,13 +171,18 @@ def _apply_noise_cap(points: List[Dict[str, Any]], top_k: int) -> List[Dict[str,
 
 def _rerank(points: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
     """Apply source-trust boosts, drop void/below-threshold chunks, order, cap noise."""
+    threshold = (
+        settings.RAG_HYBRID_SCORE_THRESHOLD
+        if settings.RAG_HYBRID_SEARCH
+        else settings.RAG_SCORE_THRESHOLD
+    )
     for point in points:
         if "raw_score" not in point:
             point["raw_score"] = point["score"]
         point["score"] = point["raw_score"] + _source_boost(point.get("payload") or {})
     ranked = [
         p for p in points
-        if p["score"] >= settings.RAG_SCORE_THRESHOLD
+        if p["score"] >= threshold
         and not _is_void_answer(p.get("payload") or {})
     ]
     ranked.sort(key=lambda p: p["score"], reverse=True)
@@ -194,6 +200,11 @@ def retrieve(
     start_time = time.time()
 
     query_vector = embedding_generator.embed(question)
+    sparse_vector = (
+        sparse_embedding_generator.embed(question)
+        if settings.RAG_HYBRID_SEARCH
+        else None
+    )
 
     candidate_pool = max(top_k * 8, 30)
     raw_floor = max(0.0, settings.RAG_SCORE_THRESHOLD - 0.15)
@@ -214,6 +225,7 @@ def retrieve(
             source_types=types,
             topics=topics,
             score_threshold=raw_floor,
+            sparse_query_vector=sparse_vector,
         )
 
     def _collect(topics: Optional[List[str]], include_curated: bool = True) -> List[Dict[str, Any]]:
@@ -255,6 +267,7 @@ def retrieve(
         "vector_size": len(query_vector),
         "query_topics": query_topics,
         "tags_applied": tags_applied,
+        "is_hybrid": bool(settings.RAG_HYBRID_SEARCH and sparse_vector and sparse_vector.get("indices")),
     }
 
 
