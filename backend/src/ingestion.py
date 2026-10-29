@@ -2,12 +2,14 @@ import hashlib
 import time
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from qdrant_client.models import PointStruct
+from qdrant_client.models import PointStruct, SparseVector
 from sqlalchemy.orm import Session
 
 from src.chat_database import IngestionJob, KnowledgeChunk, KnowledgeItem, SessionLocal, utcnow
-from src.database import delete_points, insert_points
+from src.database import delete_points, insert_points, get_client, get_collection_name, _detect_collection_vectors
 from src.embeddings import embedding_generator
+from src.sparse_embeddings import sparse_embedding_generator
+from src.config import settings
 from src.classifier import classify_topics, determine_domain, detect_language
 
 
@@ -90,10 +92,21 @@ def process_single_job(db: Session, job_id: str) -> bool:
             raise RuntimeError(f"Embedding count mismatch: expected {len(chunks)}, got {len(vectors)}")
         _append_job_log(db, job, "embedding", f"Successfully generated {len(vectors)} embedding vector(s)")
 
+        # FastEmbed BM25 sparse embeddings for hybrid retrieval
+        sparse_vectors = []
+        if settings.RAG_HYBRID_SEARCH:
+            _append_job_log(db, job, "embedding", f"Generating BM25 sparse vectors for {len(chunks)} chunk(s)...")
+            sparse_vectors = sparse_embedding_generator.embed_batch(chunks)
+            _append_job_log(db, job, "embedding", f"Generated {len(sparse_vectors)} BM25 sparse vector(s)")
+
         # Step 4: Pushing to Qdrant Vector Database
         job.current_step = "pushing_qdrant"
         _append_job_log(db, job, "pushing_qdrant", f"Constructing Qdrant points and upserting {len(vectors)} point(s) to collection...")
-        
+
+        client = get_client()
+        coll_info = client.get_collection(get_collection_name())
+        dense_name, has_sparse = _detect_collection_vectors(coll_info)
+
         points = []
         rows = []
         all_topics_set = set()
@@ -131,9 +144,21 @@ def process_single_job(db: Session, job_id: str) -> bool:
                 },
             }
 
+            if has_sparse and position < len(sparse_vectors):
+                s_item = sparse_vectors[position]
+                point_vector = {
+                    dense_name: vector,
+                    settings.SPARSE_VECTOR_NAME: SparseVector(
+                        indices=s_item["indices"],
+                        values=s_item["values"],
+                    ),
+                }
+            else:
+                point_vector = {dense_name: vector} if dense_name else vector
+
             points.append(PointStruct(
                 id=point_id,
-                vector=vector,
+                vector=point_vector,
                 payload=payload,
             ))
             rows.append(KnowledgeChunk(

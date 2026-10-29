@@ -1,15 +1,20 @@
-import { useLayoutEffect, useRef, useState, useCallback } from 'react'
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { ArrowUp, Microphone } from '@phosphor-icons/react'
 import { motion } from 'motion/react'
 import { useVoiceInput } from '../hooks/useVoiceInput'
+import { AudioWaveform } from './ui/AudioWaveform'
 
-export function Composer({
-  onSend,
-  disabled,
-}: {
+export interface ComposerProps {
   onSend: (text: string) => void
   disabled: boolean
-}) {
+}
+
+export function Composer({ onSend, disabled }: ComposerProps) {
   const [value, setValue] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -28,7 +33,7 @@ export function Composer({
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [value])
 
   const submit = () => {
@@ -39,16 +44,19 @@ export function Composer({
     ref.current?.focus()
   }
 
+  const hasText = Boolean(value.trim())
+
   return (
-    <div className="border-t border-line bg-bg px-4 pb-4 pt-3 sm:px-6">
-      <div className="mx-auto max-w-3xl">
+    <div className="relative border-t border-line/40 bg-bg/60 px-4 pb-4 pt-3 backdrop-blur-xl sm:px-6">
+      <div className="mx-auto max-w-2xl">
+        {/* Floating Obsidian Dock */}
         <div
-          className={`flex items-end gap-2 rounded-2xl border bg-surface p-2 shadow-soft transition-colors ${
+          className={`flex items-end gap-2 rounded-2xl border bg-surface/90 p-2 shadow-lift backdrop-blur-2xl transition-all ${
             isListening
-              ? 'border-accent ring-2 ring-accent/20'
+              ? 'border-danger ring-2 ring-danger/20'
               : disabled
-              ? 'border-line'
-              : 'border-line focus-within:border-accent/50'
+              ? 'border-white/5 opacity-60'
+              : 'border-white/10 hover:border-white/20 focus-within:border-accent/40 focus-within:ring-1 focus-within:ring-accent/20'
           }`}
         >
           <textarea
@@ -63,51 +71,64 @@ export function Composer({
             }}
             rows={1}
             placeholder={
-              isListening ? 'Listening… speak your question' : 'Ask a question…'
+              isListening ? 'Listening… speak now' : 'Ask Fahad anything…'
             }
             aria-label="Ask a question"
-            className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-relaxed outline-none placeholder:text-muted"
+            disabled={disabled}
+            className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-3 py-2 text-sm leading-relaxed text-ink outline-none placeholder:text-muted/60"
           />
 
+          {/* Voice Microphone Input */}
           {isSupported && (
             <motion.button
               type="button"
               onClick={toggleListening}
               disabled={disabled}
-              whileTap={!disabled ? { scale: 0.92 } : undefined}
-              aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
-              title={isListening ? 'Stop recording' : 'Speak your question'}
-              className={`relative grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-all ${
+              whileTap={{ scale: 0.92 }}
+              aria-label={
+                isListening ? 'Stop voice recording' : 'Start voice recording'
+              }
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-all ${
                 isListening
-                  ? 'bg-danger text-white shadow-lift'
-                  : 'bg-raised/70 text-muted hover:bg-accent/15 hover:text-accent'
+                  ? 'bg-danger text-white'
+                  : 'bg-raised/70 text-muted hover:bg-raised hover:text-ink'
               } disabled:cursor-not-allowed disabled:opacity-40`}
             >
-              {isListening && (
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-danger"></span>
-                </span>
+              {isListening ? (
+                <AudioWaveform
+                  isPlaying={true}
+                  barCount={3}
+                  size="sm"
+                  color="bg-white"
+                />
+              ) : (
+                <Microphone size={16} weight="bold" />
               )}
-              <Microphone size={18} weight={isListening ? 'fill' : 'bold'} />
             </motion.button>
           )}
 
+          {/* Send Button */}
           <motion.button
             type="button"
             onClick={submit}
-            disabled={disabled || !value.trim()}
-            whileTap={!disabled ? { scale: 0.92 } : undefined}
+            disabled={disabled || !hasText}
+            whileTap={{ scale: 0.92 }}
             aria-label="Send message"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-ink transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+            className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-all ${
+              hasText && !disabled
+                ? 'bg-accent text-accent-ink shadow-xs hover:bg-accent/90'
+                : 'bg-raised/50 text-muted/40 cursor-not-allowed'
+            }`}
           >
-            <ArrowUp size={18} weight="bold" />
+            <ArrowUp size={16} weight="bold" />
           </motion.button>
         </div>
-        <p className="mt-2 text-center font-mono text-[10px] tracking-tight text-muted">
+
+        {/* Minimalist Footnote */}
+        <p className="mt-2 text-center font-mono text-[10px] text-muted/60">
           {isListening
-            ? 'voice input active · speak clearly into your microphone'
-            : 'enter to send · shift + enter for a new line'}
+            ? 'voice recording active'
+            : 'Enter to send · Shift+Enter for new line'}
         </p>
       </div>
     </div>

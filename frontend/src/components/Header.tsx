@@ -1,5 +1,19 @@
-import { List, MoonStars, PhoneCall, Sun } from '@phosphor-icons/react'
+import {
+  List,
+  MoonStars,
+  PhoneCall,
+  Sun,
+} from '@phosphor-icons/react'
 import { AnimatePresence, motion } from 'motion/react'
+
+export interface HeaderProps {
+  isThinking: boolean
+  theme: 'light' | 'dark'
+  onToggleTheme: () => void
+  onMenu?: () => void
+  onStartCall?: () => void
+  onFocusSearch?: () => void
+}
 
 export function Header({
   isThinking,
@@ -7,87 +21,80 @@ export function Header({
   onToggleTheme,
   onMenu,
   onStartCall,
-}: {
-  isThinking: boolean
-  theme: 'light' | 'dark'
-  onToggleTheme: () => void
-  onMenu?: () => void
-  onStartCall?: () => void
-}) {
+}: HeaderProps) {
   return (
-    <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-line px-4 sm:px-6">
-      <div className="flex min-w-0 items-center gap-2">
+    <header className="sticky top-0 z-20 flex h-[58px] shrink-0 items-center justify-between border-b border-line/60 bg-bg/80 px-4 backdrop-blur-xl sm:px-6">
+      {/* Left: Mobile Menu & Status */}
+      <div className="flex items-center gap-3">
         {onMenu && (
           <button
             onClick={onMenu}
-            aria-label="Open conversations"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-muted transition-colors hover:text-ink lg:hidden"
+            aria-label="Open menu"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-line/60 bg-surface text-muted transition-colors hover:text-ink lg:hidden"
           >
             <List size={16} weight="bold" />
           </button>
         )}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
-            Knowledge console
-          </p>
-          <h2 className="font-display text-lg font-bold leading-tight tracking-tight">
-            Second Brain
-          </h2>
-        </div>
-      </div>
 
-      <div className="flex items-center gap-2">
-        {/* Direct 1-on-1 Voice Call Button */}
-        {onStartCall && (
-          <motion.button
-            type="button"
-            onClick={onStartCall}
-            whileTap={{ scale: 0.94 }}
-            aria-label="Start 1-on-1 voice call"
-            className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-semibold text-accent transition-all hover:border-accent hover:bg-accent/20 hover:shadow-soft"
-          >
-            <PhoneCall size={14} weight="fill" className="text-accent" />
-            <span className="hidden sm:inline">Call Fahad</span>
-          </motion.button>
-        )}
-
-        <span
-          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-            isThinking
-              ? 'border-accent/40 bg-accent/10 text-accent'
-              : 'border-line bg-surface text-muted'
-          }`}
-        >
+        {/* Subtle Activity Beacon */}
+        <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span
-              className={`absolute inline-flex h-full w-full rounded-full opacity-60 ${
-                isThinking ? 'animate-ping bg-accent' : 'bg-accent/0'
+              className={`absolute inline-flex h-full w-full rounded-full ${
+                isThinking ? 'animate-ping bg-accent opacity-75' : 'bg-transparent'
               }`}
             />
             <span
               className={`relative inline-flex h-2 w-2 rounded-full ${
-                isThinking ? 'bg-accent' : 'bg-muted'
+                isThinking ? 'bg-accent' : 'bg-ok'
               }`}
             />
           </span>
-          {isThinking ? 'Searching archive' : 'Ready'}
-        </span>
+          <span className="font-mono text-[11px] text-muted">
+            {isThinking ? 'Searching archive…' : 'Active'}
+          </span>
+        </div>
+      </div>
 
+      {/* Right: Actions */}
+      <div className="flex items-center gap-2">
+        {/* 1-on-1 Voice Call Pill */}
+        {onStartCall && (
+          <motion.button
+            type="button"
+            onClick={onStartCall}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.96 }}
+            aria-label="Start voice call with Fahad"
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-raised/80 px-3 py-1.5 text-xs font-medium text-ink shadow-xs backdrop-blur-md transition-all hover:border-accent/50 hover:bg-raised"
+          >
+            <PhoneCall size={13} weight="fill" className="text-accent" />
+            <span>Call Fahad</span>
+          </motion.button>
+        )}
+
+        {/* Theme Toggle */}
         <button
           onClick={onToggleTheme}
-          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface text-muted transition-colors hover:text-ink"
+          aria-label={
+            theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+          }
+          className="grid h-8 w-8 place-items-center rounded-lg border border-line/60 bg-surface text-muted transition-colors hover:border-line-strong hover:text-ink"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={theme}
-              initial={{ rotate: -40, opacity: 0, scale: 0.5 }}
+              initial={{ rotate: -30, opacity: 0, scale: 0.7 }}
               animate={{ rotate: 0, opacity: 1, scale: 1 }}
-              exit={{ rotate: 40, opacity: 0, scale: 0.5 }}
-              transition={{ duration: 0.2 }}
+              exit={{ rotate: 30, opacity: 0, scale: 0.7 }}
+              transition={{ duration: 0.15 }}
               className="grid place-items-center"
             >
-              {theme === 'dark' ? <Sun size={16} weight="bold" /> : <MoonStars size={16} weight="bold" />}
+              {theme === 'dark' ? (
+                <Sun size={15} weight="bold" className="text-amber-300" />
+              ) : (
+                <MoonStars size={15} weight="bold" className="text-zinc-700" />
+              )}
             </motion.span>
           </AnimatePresence>
         </button>

@@ -4,62 +4,61 @@
 
 @layer base {
   :root {
-    --c-bg: 250 250 250;
+    --c-bg: 250 250 252;
     --c-surface: 255 255 255;
-    --c-raised: 244 244 245;
-    --c-sunken: 241 241 243;
-    --c-ink: 24 24 27;
-    --c-muted: 113 113 122;
-    --c-faint: 161 161 170;
-    --c-line: 228 228 231;
-    --c-line-strong: 205 205 211;
-    --c-accent: 15 118 110;
+    --c-raised: 244 245 248;
+    --c-sunken: 238 240 244;
+    --c-ink: 15 17 23;
+    --c-muted: 107 114 128;
+    --c-faint: 156 163 175;
+    --c-line: 229 231 235;
+    --c-line-strong: 209 213 219;
+    --c-accent: 99 102 241;
     --c-accent-ink: 255 255 255;
-    --c-accent-soft: 204 241 236;
+    --c-accent-soft: 238 242 255;
 
-    /* Semantic status. Hue carries meaning only; the console and the app
-       read as one system because these live beside ink/muted/line. */
-    --c-ok: 5 122 85;
-    --c-ok-soft: 220 244 234;
-    --c-warn: 161 116 8;
-    --c-warn-soft: 250 240 214;
-    --c-danger: 190 40 50;
-    --c-danger-soft: 253 232 234;
+    /* Semantic status */
+    --c-ok: 16 185 129;
+    --c-ok-soft: 236 253 245;
+    --c-warn: 245 158 11;
+    --c-warn-soft: 254 243 199;
+    --c-danger: 239 68 68;
+    --c-danger-soft: 254 242 242;
 
-    /* Log console. A real token so the terminal is themed, not hardcoded. */
-    --c-console: 22 24 28;
-    --c-console-ink: 226 232 240;
-    --c-console-muted: 130 141 158;
-    --c-console-line: 44 48 56;
+    --c-console: 15 17 23;
+    --c-console-ink: 243 244 246;
+    --c-console-muted: 156 163 175;
+    --c-console-line: 31 35 45;
 
     color-scheme: light;
   }
 
   .dark {
-    --c-bg: 9 9 11;
-    --c-surface: 20 20 23;
-    --c-raised: 30 30 34;
-    --c-sunken: 13 13 15;
+    /* Framer Obsidian Theme: pure deep black/obsidian canvas, crisp white typography */
+    --c-bg: 8 8 10;
+    --c-surface: 14 14 18;
+    --c-raised: 20 20 26;
+    --c-sunken: 10 10 13;
     --c-ink: 244 244 245;
-    --c-muted: 158 158 168;
-    --c-faint: 122 122 133;
-    --c-line: 42 42 48;
-    --c-line-strong: 60 60 68;
-    --c-accent: 45 212 191;
-    --c-accent-ink: 9 9 11;
-    --c-accent-soft: 19 60 56;
+    --c-muted: 140 143 155;
+    --c-faint: 90 93 105;
+    --c-line: 28 28 36;
+    --c-line-strong: 42 42 54;
+    --c-accent: 129 140 248;
+    --c-accent-ink: 8 8 10;
+    --c-accent-soft: 30 27 75;
 
     --c-ok: 52 211 153;
-    --c-ok-soft: 12 48 38;
-    --c-warn: 217 158 46;
-    --c-warn-soft: 54 40 12;
-    --c-danger: 251 113 133;
-    --c-danger-soft: 60 20 26;
+    --c-ok-soft: 6 78 59;
+    --c-warn: 251 191 36;
+    --c-warn-soft: 120 53 15;
+    --c-danger: 248 113 113;
+    --c-danger-soft: 127 29 29;
 
-    --c-console: 12 12 14;
-    --c-console-ink: 226 232 240;
-    --c-console-muted: 122 132 148;
-    --c-console-line: 38 40 46;
+    --c-console: 10 10 13;
+    --c-console-ink: 243 244 246;
+    --c-console-muted: 140 143 155;
+    --c-console-line: 28 28 36;
 
     color-scheme: dark;
   }
@@ -87,7 +86,7 @@
   }
 
   ::selection {
-    background-color: rgb(var(--c-accent) / 0.22);
+    background-color: rgb(var(--c-accent) / 0.28);
   }
 
   :focus-visible {
@@ -102,7 +101,6 @@
 }
 
 @layer components {
-  /* One radius for the whole console. */
   .ctl {
     @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface
            text-[13px] font-medium text-ink transition-colors
@@ -118,7 +116,6 @@
     @apply h-9 px-3;
   }
 
-  /* Destructive action: colour on hover only, so a row of them stays calm. */
   .ctl-danger {
     @apply text-muted hover:border-danger/40 hover:bg-danger-soft hover:text-danger;
   }
@@ -131,12 +128,10 @@
     @apply border-transparent bg-transparent hover:border-line hover:bg-raised;
   }
 
-  /* Icon-only control. 32px keeps it above the tap-target floor. */
   .ctl-icon {
     @apply h-8 w-8 shrink-0 p-0;
   }
 
-  /* Section label. The one place 11px is correct: it labels a column. */
   .eyebrow {
     @apply text-[11px] font-semibold uppercase tracking-[0.07em] text-muted;
   }
