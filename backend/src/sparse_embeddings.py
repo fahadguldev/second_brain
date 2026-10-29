@@ -3,11 +3,27 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from typing import Any, Dict, List, Optional
 from fastembed import SparseTextEmbedding
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _get_cache_dir() -> str:
+    """Ensure cache directory is in /tmp on serverless environments like Vercel."""
+    base = (
+        os.getenv("FASTEMBED_CACHE_DIR")
+        or os.getenv("HF_HOME")
+        or os.path.join(tempfile.gettempdir(), "fastembed_cache")
+    )
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return base
 
 
 class SparseEmbeddingGenerator:
@@ -19,8 +35,9 @@ class SparseEmbeddingGenerator:
 
     def _get_model(self) -> SparseTextEmbedding:
         if self._model is None:
-            logger.info("Initializing FastEmbed BM25 sparse model: %s", self.model_name)
-            self._model = SparseTextEmbedding(model_name=self.model_name)
+            cache_dir = _get_cache_dir()
+            logger.info("Initializing FastEmbed BM25 sparse model: %s (cache: %s)", self.model_name, cache_dir)
+            self._model = SparseTextEmbedding(model_name=self.model_name, cache_dir=cache_dir)
         return self._model
 
     def embed(self, text: str) -> Dict[str, List[Any]]:
