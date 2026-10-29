@@ -1,5 +1,7 @@
 import base64
 import hashlib
+import os
+import tempfile
 import logging
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Optional
@@ -11,8 +13,31 @@ logger = logging.getLogger("second_brain.voice")
 
 JSF_API_BASE = "https://www.jsflabs.io/api/v1"
 JSF_FAST_TTS_ENDPOINT = "https://www.jsflabs.io/api/jsf-tts-3"
-AUDIO_CACHE_DIR = Path("audio_cache")
-AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+def _get_audio_cache_dir() -> Path:
+    """
+    Determine a writable audio cache directory.
+    In serverless environments (e.g. Vercel, AWS Lambda), the deployment root is read-only,
+    so we safely fallback to the system temp directory (/tmp/second_brain_audio_cache).
+    """
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        cache_dir = Path(tempfile.gettempdir()) / "second_brain_audio_cache"
+    else:
+        cache_dir = Path("audio_cache")
+
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as exc:
+        logger.warning(f"Could not create cache directory at {cache_dir} ({exc}); falling back to temp dir.")
+        cache_dir = Path(tempfile.gettempdir()) / "second_brain_audio_cache"
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to create temp audio cache directory: {e}")
+    return cache_dir
+
+
+AUDIO_CACHE_DIR = _get_audio_cache_dir()
+
 
 
 class VoiceConfigurationError(Exception):
@@ -135,9 +160,12 @@ async def synthesize_speech(
     cache_key = _compute_cache_key(clean_text, target_voice_id, target_speed)
     cache_path = AUDIO_CACHE_DIR / f"{cache_key}.wav"
 
-    if cache_path.exists():
-        logger.info(f"JSF Labs TTS cache hit for key {cache_key[:12]}")
-        return cache_path.read_bytes()
+    try:
+        if cache_path.exists():
+            logger.info(f"JSF Labs TTS cache hit for key {cache_key[:12]}")
+            return cache_path.read_bytes()
+    except Exception as exc:
+        logger.warning(f"Failed reading audio cache: {exc}")
 
     # 1. If JSF_USER_ID is provided, try the fast inference endpoint first
     if settings.JSF_USER_ID.strip():
@@ -149,7 +177,10 @@ async def synthesize_speech(
                 speed=target_speed,
                 user_id=settings.JSF_USER_ID.strip(),
             )
-            cache_path.write_bytes(audio_bytes)
+            try:
+                cache_path.write_bytes(audio_bytes)
+            except Exception as cache_err:
+                logger.warning(f"Failed to write audio cache: {cache_err}")
             return audio_bytes
         except Exception as e:
             logger.warning(f"Fast inference endpoint failed ({e}); falling back to standard API gateway.")
@@ -239,7 +270,10 @@ async def synthesize_speech(
                 else:
                     audio_bytes = response.content
 
-                cache_path.write_bytes(audio_bytes)
+                try:
+                    cache_path.write_bytes(audio_bytes)
+                except Exception as cache_err:
+                    logger.warning(f"Failed to write audio cache: {cache_err}")
                 logger.info(f"Synthesized and cached JSF Labs TTS ({len(audio_bytes)} bytes) using key ...{active_key[-6:]}")
                 return audio_bytes
 
