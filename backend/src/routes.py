@@ -18,12 +18,14 @@ from src.rag import generate_answer, generate_answer_stream
 from fastapi import File, Form, UploadFile
 from src.voice_service import (
     get_voice_status,
+    get_audio_media_type,
     synthesize_speech,
     synthesize_speech_stream,
     clone_voice,
     VoiceConfigurationError,
     VoiceServiceError,
 )
+import src.elevenlabs_service as elevenlabs_svc
 
 router = APIRouter(prefix="/api", tags=["second-brain"])
 
@@ -255,13 +257,18 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=50_000)
     voice_id: Optional[str] = Field(default=None, max_length=128)
     speed: Optional[float] = Field(default=None, ge=0.5, le=2.0)
+    provider: Optional[str] = Field(default=None, max_length=32)
+    model_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class VoiceStatusResponse(BaseModel):
-    provider: str = "jsflabs"
+    provider: str = "elevenlabs"
     configured: bool
     voice_id: Optional[str] = None
+    model_id: Optional[str] = None
     speed: float = 1.0
+    has_user_id: bool = False
+    available_providers: List[str] = Field(default_factory=list)
     key_pool: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -269,8 +276,10 @@ class VoiceCloneResponse(BaseModel):
     success: bool
     voice_id: Optional[str]
     name: str
-    gender: str
-    language: str
+    gender: Optional[str] = None
+    language: Optional[str] = None
+    description: Optional[str] = None
+    provider: Optional[str] = "elevenlabs"
 
 
 @router.get("/voice/status", response_model=VoiceStatusResponse)
@@ -283,6 +292,16 @@ def tts_status() -> VoiceStatusResponse:
     return VoiceStatusResponse(**get_voice_status())
 
 
+@router.get("/voice/voices")
+async def get_voices_list():
+    """Fetch available voices for voice calls and listening."""
+    try:
+        voices = await elevenlabs_svc.list_voices()
+        return {"provider": "elevenlabs", "voices": voices}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch voices: {str(exc)}") from exc
+
+
 @router.post("/tts")
 async def generate_speech(req: TTSRequest):
     try:
@@ -290,12 +309,16 @@ async def generate_speech(req: TTSRequest):
             req.text,
             voice_id=req.voice_id,
             speed=req.speed,
+            provider=req.provider,
+            model_id=req.model_id,
         )
+        media_type = get_audio_media_type(req.provider)
+        ext = "mp3" if "mpeg" in media_type else "wav"
         return Response(
             content=audio_bytes,
-            media_type="audio/wav",
+            media_type=media_type,
             headers={
-                "Content-Disposition": 'inline; filename="speech.wav"',
+                "Content-Disposition": f'inline; filename="speech.{ext}"',
                 "Cache-Control": "public, max-age=86400",
             },
         )
@@ -306,15 +329,22 @@ async def generate_speech(req: TTSRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"JSF Labs TTS failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail=f"TTS failed: {str(exc)}") from exc
 
 
 @router.post("/tts/stream")
 async def stream_speech(req: TTSRequest):
     try:
+        media_type = get_audio_media_type(req.provider)
         return StreamingResponse(
-            synthesize_speech_stream(req.text, voice_id=req.voice_id, speed=req.speed),
-            media_type="audio/wav",
+            synthesize_speech_stream(
+                req.text,
+                voice_id=req.voice_id,
+                speed=req.speed,
+                provider=req.provider,
+                model_id=req.model_id,
+            ),
+            media_type=media_type,
             headers={
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
@@ -323,7 +353,7 @@ async def stream_speech(req: TTSRequest):
     except VoiceConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"JSF Labs TTS stream failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail=f"TTS stream failed: {str(exc)}") from exc
 
 
 @router.post("/voice/clone", response_model=VoiceCloneResponse)
@@ -332,10 +362,10 @@ async def clone_voice_endpoint(
     name: str = Form(...),
     gender: str = Form(default="Male"),
     language: str = Form(default="en"),
+    provider: Optional[str] = Form(default=None),
 ):
     """
-    Clone a voice from an audio sample via JSF Labs API:
-    POST https://www.jsflabs.io/api/v1/voice-clone
+    Clone a voice from an audio sample via active voice provider (ElevenLabs / JSF Labs).
     """
     audio_bytes = await audio.read()
     if not audio_bytes:
@@ -347,6 +377,7 @@ async def clone_voice_endpoint(
             gender=gender,
             language=language,
             filename=audio.filename or "sample.wav",
+            provider=provider,
         )
         return VoiceCloneResponse(**result)
     except VoiceConfigurationError as exc:

@@ -4,15 +4,20 @@ import os
 import tempfile
 import logging
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 from src.config import settings
 from src.jsf_keys import jsf_key_manager
+from src.voice_text import clean_text_for_speech
+import src.elevenlabs_service as elevenlabs_svc
+from src.elevenlabs_keys import elevenlabs_key_manager
 
 logger = logging.getLogger("second_brain.voice")
 
 JSF_API_BASE = "https://www.jsflabs.io/api/v1"
 JSF_FAST_TTS_ENDPOINT = "https://www.jsflabs.io/api/jsf-tts-3"
+
+
 def _get_audio_cache_dir() -> Path:
     """
     Determine a writable audio cache directory.
@@ -39,39 +44,109 @@ def _get_audio_cache_dir() -> Path:
 AUDIO_CACHE_DIR = _get_audio_cache_dir()
 
 
-
 class VoiceConfigurationError(Exception):
-    """Raised when JSF Labs credentials or configuration are missing."""
+    """Raised when voice provider credentials or configuration are missing."""
     pass
 
 
 class VoiceServiceError(Exception):
-    """Raised when JSF Labs API call fails across all available keys or endpoints."""
+    """Raised when voice API call fails across all available keys or endpoints."""
     def __init__(self, message: str, status_code: int = 500):
         super().__init__(message)
         self.status_code = status_code
 
 
-def is_voice_configured() -> bool:
+def is_jsf_configured() -> bool:
     """Check if any JSF Labs API keys or User IDs are configured."""
     return bool(settings.JSF_USER_ID.strip()) or jsf_key_manager.has_keys
 
 
+def is_elevenlabs_configured() -> bool:
+    """Check if any ElevenLabs API keys are configured."""
+    return elevenlabs_svc.is_elevenlabs_configured()
+
+
+def is_voice_configured() -> bool:
+    """Check if any voice synthesis provider (ElevenLabs or JSF Labs) is configured."""
+    return is_elevenlabs_configured() or is_jsf_configured()
+
+
+def get_active_provider(requested_provider: Optional[str] = None) -> str:
+    """
+    Determine the active voice provider.
+    Priority:
+    1. Explicit request parameter ("elevenlabs" or "jsflabs")
+    2. Explicit settings.VOICE_PROVIDER configuration
+    3. Auto-detection: ElevenLabs if configured, else JSF Labs
+    """
+    if requested_provider:
+        p = requested_provider.lower().strip()
+        if p in ("elevenlabs", "eleven_labs", "eleven"):
+            return "elevenlabs"
+        if p in ("jsflabs", "jsf"):
+            return "jsflabs"
+
+    cfg_provider = settings.VOICE_PROVIDER.lower().strip()
+    if cfg_provider in ("elevenlabs", "eleven_labs", "eleven"):
+        return "elevenlabs"
+    if cfg_provider in ("jsflabs", "jsf"):
+        return "jsflabs"
+
+    # Auto mode: prioritize ElevenLabs if keys are available
+    if is_elevenlabs_configured():
+        return "elevenlabs"
+    if is_jsf_configured():
+        return "jsflabs"
+
+    return "elevenlabs"
+
+
+def get_audio_media_type(provider: Optional[str] = None) -> str:
+    """Return appropriate MIME media type for audio stream/blob."""
+    active = get_active_provider(provider)
+    if active == "elevenlabs":
+        return "audio/mpeg"
+    return "audio/wav"
+
+
 def get_voice_status() -> Dict[str, Any]:
     """Return public voice configuration and key pool health status."""
+    active = get_active_provider()
     configured = is_voice_configured()
-    return {
-        "provider": "jsflabs",
-        "configured": configured,
-        "has_user_id": bool(settings.JSF_USER_ID.strip()),
-        "voice_id": settings.JSF_VOICE_ID if configured else None,
-        "speed": settings.JSF_TTS_SPEED if configured else 1.0,
-        "key_pool": jsf_key_manager.get_status_summary(),
-    }
+
+    available_providers: List[str] = []
+    if is_elevenlabs_configured():
+        available_providers.append("elevenlabs")
+    if is_jsf_configured():
+        available_providers.append("jsflabs")
+
+    if active == "elevenlabs":
+        el_status = elevenlabs_svc.get_elevenlabs_status()
+        return {
+            "provider": "elevenlabs",
+            "configured": configured,
+            "has_user_id": False,
+            "voice_id": settings.ELEVENLABS_VOICE_ID if configured else None,
+            "model_id": settings.ELEVENLABS_MODEL_ID if configured else None,
+            "speed": 1.0,
+            "available_providers": available_providers,
+            "key_pool": el_status.get("key_pool", {}),
+        }
+    else:
+        return {
+            "provider": "jsflabs",
+            "configured": configured,
+            "has_user_id": bool(settings.JSF_USER_ID.strip()),
+            "voice_id": settings.JSF_VOICE_ID if configured else None,
+            "model_id": None,
+            "speed": settings.JSF_TTS_SPEED if configured else 1.0,
+            "available_providers": available_providers,
+            "key_pool": jsf_key_manager.get_status_summary(),
+        }
 
 
 def _compute_cache_key(text: str, voice_id: Optional[str], speed: float) -> str:
-    """Generate deterministic hash for text and synthesis parameters."""
+    """Generate deterministic hash for text and JSF synthesis parameters."""
     raw = f"jsflabs:{voice_id or 'default'}:{speed}:{text.strip()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -98,7 +173,6 @@ async def _synthesize_via_fast_inference(
         "Origin": "https://www.jsflabs.io",
         "Referer": "https://www.jsflabs.io/dashboard/fast-inference",
     }
-    # Also attach API key if available
     if jsf_key_manager.has_keys:
         try:
             key_state = jsf_key_manager.reserve_key()
@@ -120,13 +194,11 @@ async def _synthesize_via_fast_inference(
         content_type = response.headers.get("Content-Type", "")
         if "application/json" in content_type:
             res_json = response.json()
-            # Check for URL
             audio_url = res_json.get("audioUrl") or res_json.get("audio_url") or res_json.get("url")
             if audio_url:
                 audio_res = await client.get(audio_url, timeout=30.0)
                 if audio_res.status_code == 200:
                     return audio_res.content
-            # Check for base64 encoded audio
             b64_audio = res_json.get("audio") or res_json.get("audioBase64") or res_json.get("base64")
             if b64_audio:
                 return base64.b64decode(b64_audio)
@@ -135,28 +207,15 @@ async def _synthesize_via_fast_inference(
             return response.content
 
 
-async def synthesize_speech(
-    text: str,
+async def _synthesize_speech_jsf(
+    clean_text: str,
     voice_id: Optional[str] = None,
     speed: Optional[float] = None,
 ) -> bytes:
-    """
-    Synthesize speech using JSF Labs TTS API with persistent disk caching
-    and automatic recurring API key rotation on expiry, quota, or rate-limits.
-    """
-    if not is_voice_configured():
-        raise VoiceConfigurationError(
-            "JSF Labs credentials are not configured. Set JSF_API_KEY or JSF_USER_ID in backend/.env"
-        )
-
-    clean_text = text.strip()
-    if not clean_text:
-        raise ValueError("Text cannot be empty.")
-
+    """Internal helper to synthesize speech using JSF Labs."""
     target_voice_id = voice_id or settings.JSF_VOICE_ID or "jsf_default_male"
     target_speed = speed if speed is not None else settings.JSF_TTS_SPEED
 
-    # Check local disk cache first
     cache_key = _compute_cache_key(clean_text, target_voice_id, target_speed)
     cache_path = AUDIO_CACHE_DIR / f"{cache_key}.wav"
 
@@ -167,7 +226,6 @@ async def synthesize_speech(
     except Exception as exc:
         logger.warning(f"Failed reading audio cache: {exc}")
 
-    # 1. If JSF_USER_ID is provided, try the fast inference endpoint first
     if settings.JSF_USER_ID.strip():
         try:
             logger.info("Synthesizing via JSF Labs Fast Inference endpoint (/api/jsf-tts-3)...")
@@ -185,7 +243,6 @@ async def synthesize_speech(
         except Exception as e:
             logger.warning(f"Fast inference endpoint failed ({e}); falling back to standard API gateway.")
 
-    # 2. Standard Developer API with recurring key pool rotation
     if not jsf_key_manager.has_keys:
         raise VoiceServiceError("No active JSF Labs API keys available.", status_code=503)
 
@@ -200,7 +257,7 @@ async def synthesize_speech(
     attempts = max(1, total_keys)
     errors: list[str] = []
 
-    for attempt_idx in range(attempts):
+    for _ in range(attempts):
         try:
             key_state = jsf_key_manager.reserve_key()
             active_key = key_state.api_key
@@ -232,7 +289,6 @@ async def synthesize_speech(
                 except Exception:
                     pass
 
-                # Handle Rate Limiting (429) or Auth Expiry / Insufficient Credits (401, 402, 403)
                 if response.status_code in (429, 401, 402, 403):
                     err_msg = f"Key ...{active_key[-6:]} returned [{response.status_code}]: {err_detail}"
                     logger.warning(f"Rotating JSF Labs key: {err_msg}")
@@ -250,10 +306,8 @@ async def synthesize_speech(
                     errors.append(f"Key ...{active_key[-6:]} [{response.status_code}]: {err_detail}")
                     continue
 
-                # Success
                 jsf_key_manager.mark_key_success(active_key)
                 content_type = response.headers.get("Content-Type", "")
-                audio_bytes: bytes
 
                 if "application/json" in content_type:
                     res_data = response.json()
@@ -274,7 +328,7 @@ async def synthesize_speech(
                     cache_path.write_bytes(audio_bytes)
                 except Exception as cache_err:
                     logger.warning(f"Failed to write audio cache: {cache_err}")
-                logger.info(f"Synthesized and cached JSF Labs TTS ({len(audio_bytes)} bytes) using key ...{active_key[-6:]}")
+                logger.info(f"Synthesized and cached JSF Labs TTS ({len(audio_bytes)} bytes)")
                 return audio_bytes
 
         except httpx.RequestError as exc:
@@ -289,18 +343,119 @@ async def synthesize_speech(
     )
 
 
+async def synthesize_speech(
+    text: str,
+    voice_id: Optional[str] = None,
+    speed: Optional[float] = None,
+    provider: Optional[str] = None,
+    model_id: Optional[str] = None,
+) -> bytes:
+    """
+    Synthesize speech using the active provider (ElevenLabs or JSF Labs) with persistent disk
+    caching, automatic API key pool rotation, and fallback protection.
+    """
+    if not is_voice_configured():
+        raise VoiceConfigurationError(
+            "Voice credentials are not configured. Set ELEVENLABS_API_KEY or JSF_API_KEY in backend/.env"
+        )
+
+    clean_text = clean_text_for_speech(text)
+    if not clean_text:
+        raise ValueError("Text cannot be empty.")
+
+    active_provider = get_active_provider(provider)
+
+    # 1. Try primary provider
+    if active_provider == "elevenlabs":
+        if is_elevenlabs_configured():
+            try:
+                return await elevenlabs_svc.synthesize_speech(
+                    text=clean_text,
+                    voice_id=voice_id,
+                    model_id=model_id,
+                )
+            except Exception as exc:
+                logger.warning(f"ElevenLabs synthesis failed ({exc}); checking fallback provider...")
+                # If JSF Labs is configured, gracefully fall back
+                if is_jsf_configured():
+                    logger.info("Falling back to JSF Labs TTS...")
+                    return await _synthesize_speech_jsf(clean_text, voice_id=None, speed=speed)
+                raise
+        elif is_jsf_configured():
+            logger.info("ElevenLabs not configured; routing to configured JSF Labs provider...")
+            return await _synthesize_speech_jsf(clean_text, voice_id=voice_id, speed=speed)
+        else:
+            raise VoiceConfigurationError(
+                "ElevenLabs credentials are not configured. Set ELEVENLABS_API_KEY in backend/.env"
+            )
+    else:
+        # JSF Labs primary
+        if is_jsf_configured():
+            try:
+                return await _synthesize_speech_jsf(clean_text, voice_id=voice_id, speed=speed)
+            except Exception as exc:
+                logger.warning(f"JSF Labs synthesis failed ({exc}); checking ElevenLabs fallback...")
+                if is_elevenlabs_configured():
+                    logger.info("Falling back to ElevenLabs TTS...")
+                    return await elevenlabs_svc.synthesize_speech(
+                        text=clean_text,
+                        voice_id=None,
+                        model_id=model_id,
+                    )
+                raise
+        elif is_elevenlabs_configured():
+            logger.info("JSF Labs not configured; routing to configured ElevenLabs provider...")
+            return await elevenlabs_svc.synthesize_speech(
+                text=clean_text,
+                voice_id=voice_id,
+                model_id=model_id,
+            )
+        else:
+            raise VoiceConfigurationError(
+                "Voice credentials are not configured. Set ELEVENLABS_API_KEY or JSF_API_KEY in backend/.env"
+            )
+
+
 async def synthesize_speech_stream(
     text: str,
     voice_id: Optional[str] = None,
     speed: Optional[float] = None,
+    provider: Optional[str] = None,
+    model_id: Optional[str] = None,
 ) -> AsyncGenerator[bytes, None]:
     """
-    Stream audio chunks for real-time playback.
+    Stream audio chunks for real-time low latency playback.
     """
-    audio_bytes = await synthesize_speech(text, voice_id=voice_id, speed=speed)
-    chunk_size = 16384
-    for i in range(0, len(audio_bytes), chunk_size):
-        yield audio_bytes[i : i + chunk_size]
+    if not is_voice_configured():
+        raise VoiceConfigurationError(
+            "Voice credentials are not configured. Set ELEVENLABS_API_KEY or JSF_API_KEY in backend/.env"
+        )
+
+    clean_text = clean_text_for_speech(text)
+    if not clean_text:
+        raise ValueError("Text cannot be empty.")
+
+    active_provider = get_active_provider(provider)
+
+    if active_provider == "elevenlabs" and is_elevenlabs_configured():
+        async for chunk in elevenlabs_svc.synthesize_speech_stream(
+            text=clean_text,
+            voice_id=voice_id,
+            model_id=model_id,
+        ):
+            yield chunk
+    else:
+        # Fallback to chunked full audio buffer
+        audio_bytes = await synthesize_speech(
+            text=clean_text,
+            voice_id=voice_id,
+            speed=speed,
+            provider=provider,
+            model_id=model_id,
+        )
+        chunk_size = 16384
+        for i in range(0, len(audio_bytes), chunk_size):
+            yield audio_bytes[i : i + chunk_size]
 
 
 async def clone_voice(
@@ -309,14 +464,23 @@ async def clone_voice(
     gender: str = "Male",
     language: str = "en",
     filename: str = "sample.wav",
+    provider: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Clone a voice using JSF Labs voice cloning endpoint:
-    POST https://www.jsflabs.io/api/v1/voice-clone
-    Returns portable voice_id.
+    Clone a voice using the active provider's voice cloning endpoint.
     """
-    if not is_voice_configured():
-        raise VoiceConfigurationError("JSF Labs credentials are not configured.")
+    active_provider = get_active_provider(provider)
+
+    if active_provider == "elevenlabs" and is_elevenlabs_configured():
+        return await elevenlabs_svc.clone_voice(
+            audio_bytes=audio_bytes,
+            name=name,
+            description=f"Cloned creator voice ({name}) for Second Brain",
+            filename=filename,
+        )
+
+    if not is_jsf_configured():
+        raise VoiceConfigurationError("No configured voice provider found for voice cloning.")
 
     url = f"{JSF_API_BASE}/voice-clone"
     files = {
@@ -337,7 +501,7 @@ async def clone_voice(
         response = await client.post(url, headers=headers, files=files, data=data)
         if response.status_code not in (200, 201):
             raise VoiceServiceError(
-                f"JSF Labs voice cloning failed [{response.status_code}]: {response.text}",
+                f"Voice cloning failed [{response.status_code}]: {response.text}",
                 status_code=response.status_code,
             )
         res_json = response.json()
@@ -348,4 +512,5 @@ async def clone_voice(
             "name": name,
             "gender": gender,
             "language": language,
+            "provider": "jsflabs",
         }

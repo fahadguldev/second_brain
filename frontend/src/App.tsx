@@ -214,6 +214,7 @@ function ChatApp() {
         currentTranscript={voiceCall.currentTranscript}
         lastAIResponse={voiceCall.lastAIResponse}
         error={voiceCall.error}
+        provider={voiceCall.provider}
         onEndCall={voiceCall.endCall}
         onToggleMute={voiceCall.toggleMute}
         onInterrupt={voiceCall.interrupt}

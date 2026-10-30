@@ -147,6 +147,11 @@ export function MessageBubble({
             type="button"
             onClick={() => onPlayVoice(msg.id, msg.text)}
             disabled={isVoiceLoading}
+            title={
+              isPlayingVoice
+                ? 'Pause audio playback'
+                : "Listen to response in creator's voice (ElevenLabs)"
+            }
             aria-label={
               isPlayingVoice ? 'Pause voice' : 'Listen to response'
             }

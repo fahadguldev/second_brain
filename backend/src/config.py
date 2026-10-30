@@ -50,6 +50,23 @@ class Settings:
         if k.startswith("GEMINI_API_KEY") and val.strip()
     ))
 
+    # Voice Provider Mode ("elevenlabs", "jsflabs", or "auto")
+    VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "auto")
+
+    # ElevenLabs Voice API (TTS, Conversational Voice Call & Voice Cloning)
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    ELEVENLABS_API_KEYS: list[str] = list(dict.fromkeys(
+        [val.strip() for k, val in os.environ.items() if k.startswith("ELEVENLABS_API_KEY") and val.strip()] +
+        [k.strip() for k in os.getenv("ELEVENLABS_API_KEYS", "").split(",") if k.strip()]
+    ))
+    # Default to creator/male clone voice or customizable voice ID
+    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
+    # eleven_flash_v2_5 offers ultra-low latency (~75ms) ideal for real-time 1-on-1 calls
+    ELEVENLABS_MODEL_ID: str = os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5")
+    ELEVENLABS_STABILITY: float = float(os.getenv("ELEVENLABS_STABILITY", "0.5"))
+    ELEVENLABS_SIMILARITY_BOOST: float = float(os.getenv("ELEVENLABS_SIMILARITY_BOOST", "0.75"))
+    ELEVENLABS_LATENCY_OPTIMIZATION: int = int(os.getenv("ELEVENLABS_LATENCY_OPTIMIZATION", "3"))
+
     # JSF Labs Voice API (TTS)
     JSF_USER_ID: str = os.getenv("JSF_USER_ID", "")
     JSF_API_KEY: str = os.getenv("JSF_API_KEY", "")

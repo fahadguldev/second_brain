@@ -4,7 +4,9 @@
 node_modules
 brag-output
 
-# Local agent tooling, installed globally under %USERPROFILE%\.agents\skills
+# Audio Cache
+audio_cache/
+backend/audio_cache/
 .agents/
 skills-lock.json
 

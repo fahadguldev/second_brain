@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { cleanTextForSpeech } from '../lib/voiceUtils'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
@@ -22,6 +23,22 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
   const [currentTranscript, setCurrentTranscript] = useState('')
   const [lastAIResponse, setLastAIResponse] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [provider, setProvider] = useState<string>('elevenlabs')
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_URL}/api/voice/status`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data?.provider) {
+          setProvider(data.provider)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const recognitionRef = useRef<any>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -75,12 +92,24 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
       updateCallState('speaking')
       setLastAIResponse(text)
 
+      const sanitizedText = cleanTextForSpeech(text)
+      if (!sanitizedText) {
+        console.warn('[VoiceCall] Cleaned text is empty; returning to listening state.')
+        if (isCallActiveRef.current) {
+          updateCallState('listening')
+        }
+        return
+      }
+
       try {
-        console.log('[VoiceCall] Requesting TTS for answer (length:', text.length, ')')
+        console.log('[VoiceCall] Requesting ElevenLabs TTS for answer (length:', sanitizedText.length, ')')
         const res = await fetch(`${API_URL}/api/tts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({
+            text: sanitizedText,
+            provider,
+          }),
         })
 
         if (!res.ok) {
@@ -136,7 +165,7 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
         }, 1500)
       }
     },
-    [updateCallState],
+    [provider, updateCallState],
   )
 
   const processUserSpeech = useCallback(
@@ -421,6 +450,7 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
     currentTranscript,
     lastAIResponse,
     error,
+    provider,
     startCall,
     endCall,
     toggleMute,
