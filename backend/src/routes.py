@@ -365,7 +365,7 @@ async def clone_voice_endpoint(
     provider: Optional[str] = Form(default=None),
 ):
     """
-    Clone a voice from an audio sample via active voice provider (ElevenLabs / JSF Labs).
+    Clone a voice from an audio sample via ElevenLabs.
     """
     audio_bytes = await audio.read()
     if not audio_bytes:

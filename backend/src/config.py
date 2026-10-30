@@ -10,6 +10,8 @@ if _backend_env.exists():
 _DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:8000",
@@ -54,9 +56,6 @@ class Settings:
         if k.startswith("GEMINI_API_KEY") and val.strip()
     ))
 
-    # Voice Provider Mode ("elevenlabs", "jsflabs", or "auto")
-    VOICE_PROVIDER: str = os.getenv("VOICE_PROVIDER", "auto")
-
     # ElevenLabs Voice API (TTS, Conversational Voice Call & Voice Cloning)
     ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
     ELEVENLABS_API_KEYS: list[str] = list(dict.fromkeys(
@@ -64,23 +63,12 @@ class Settings:
         [k.strip() for k in os.getenv("ELEVENLABS_API_KEYS", "").split(",") if k.strip()]
     ))
     # Default to creator/male clone voice or customizable voice ID
-    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
+    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "vH5LP38dcYJ3CIbC2rKX")
     # eleven_flash_v2_5 offers ultra-low latency (~75ms) ideal for real-time 1-on-1 calls
     ELEVENLABS_MODEL_ID: str = os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5")
     ELEVENLABS_STABILITY: float = float(os.getenv("ELEVENLABS_STABILITY", "0.5"))
     ELEVENLABS_SIMILARITY_BOOST: float = float(os.getenv("ELEVENLABS_SIMILARITY_BOOST", "0.75"))
     ELEVENLABS_LATENCY_OPTIMIZATION: int = int(os.getenv("ELEVENLABS_LATENCY_OPTIMIZATION", "3"))
-
-    # JSF Labs Voice API (TTS)
-    JSF_USER_ID: str = os.getenv("JSF_USER_ID", "")
-    JSF_API_KEY: str = os.getenv("JSF_API_KEY", "")
-    JSF_API_KEYS: list[str] = list(dict.fromkeys(
-        [val.strip() for k, val in os.environ.items() if k.startswith("JSF_API_KEY") and val.strip()] +
-        [k.strip() for k in os.getenv("JSF_API_KEYS", "").split(",") if k.strip()]
-    ))
-    # Default to built-in JSF Labs default voice if not specified
-    JSF_VOICE_ID: str = os.getenv("JSF_VOICE_ID", "jsf_default_male")
-    JSF_TTS_SPEED: float = float(os.getenv("JSF_TTS_SPEED", "1.0"))
 
     # Model names from Google AI Studio
     # - Embedding model: models/gemini-embedding-2 produces 3072-dim vectors (matches knowledge_base)

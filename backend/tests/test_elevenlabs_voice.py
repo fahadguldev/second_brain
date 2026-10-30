@@ -119,14 +119,11 @@ class TestElevenLabsService(unittest.TestCase):
 
 class TestVoiceServiceOrchestrator(unittest.TestCase):
     def test_provider_resolution(self):
-        with patch("src.voice_service.is_elevenlabs_configured", return_value=True), \
-             patch("src.voice_service.is_jsf_configured", return_value=True):
-            self.assertEqual(get_active_provider("elevenlabs"), "elevenlabs")
-            self.assertEqual(get_active_provider("jsflabs"), "jsflabs")
+        with patch("src.voice_service.is_elevenlabs_configured", return_value=True):
+            self.assertEqual(get_active_provider(), "elevenlabs")
 
     def test_audio_media_types(self):
-        self.assertEqual(get_audio_media_type("elevenlabs"), "audio/mpeg")
-        self.assertEqual(get_audio_media_type("jsflabs"), "audio/wav")
+        self.assertEqual(get_audio_media_type(), "audio/mpeg")
 
 
 if __name__ == "__main__":
