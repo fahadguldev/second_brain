@@ -26,6 +26,9 @@ def _read_visitor_id(cookie: str | None, header: str | None = None) -> str | Non
         return None
 
 
+_known_users: set[str] = set()
+
+
 def get_current_user(
     response: Response,
     visitor_cookie: str | None = Cookie(default=None, alias=COOKIE_NAME),
@@ -34,18 +37,7 @@ def get_current_user(
 ) -> User:
     existing_id = _read_visitor_id(visitor_cookie, visitor_header)
     user_id = existing_id or str(uuid4())
-    user = db.get(User, user_id)
-    if user is None:
-        user = User(id=user_id)
-        db.add(user)
-        user.last_seen_at = utcnow()
-        db.commit()
-    else:
-        # Throttle last_seen_at updates: do not block every query with a 600ms+ remote DB write
-        now = utcnow()
-        if user.last_seen_at is None or (now - user.last_seen_at).total_seconds() > 900:
-            user.last_seen_at = now
-            db.commit()
+    
     response.headers["X-Visitor-Id"] = user_id
     if existing_id != user_id:
         response.set_cookie(
@@ -53,7 +45,23 @@ def get_current_user(
             httponly=True, secure=settings.COOKIE_SECURE,
             samesite=settings.COOKIE_SAMESITE, domain=settings.COOKIE_DOMAIN, path="/",
         )
-    return user
+
+    # Fast in-memory resolution: 0ms database blocking
+    if user_id in _known_users:
+        return User(id=user_id)
+
+    # First encounter: ensure user exists once and cache in memory
+    try:
+        user = db.get(User, user_id)
+        if user is None:
+            user = User(id=user_id, last_seen_at=utcnow())
+            db.add(user)
+            db.commit()
+        _known_users.add(user_id)
+        return user
+    except Exception:
+        _known_users.add(user_id)
+        return User(id=user_id)
 
 
 def owned_conversation(db: Session, conversation_id: str, user_id: str) -> Conversation:

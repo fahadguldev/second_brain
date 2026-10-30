@@ -1,5 +1,7 @@
 import re
+import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional
 from src.classifier import classify_topics
@@ -192,6 +194,34 @@ def _rerank(points: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
     return _apply_noise_cap(ranked, top_k)
 
 
+_rag_cache: OrderedDict[str, tuple[Dict[str, Any], float]] = OrderedDict()
+_rag_cache_lock = threading.Lock()
+MAX_RAG_CACHE = 150
+RAG_CACHE_TTL = 600.0  # 10 minutes cache
+
+
+def _get_cached_rag(key: str) -> Optional[Dict[str, Any]]:
+    with _rag_cache_lock:
+        if key in _rag_cache:
+            entry, ts = _rag_cache[key]
+            if time.time() - ts < RAG_CACHE_TTL:
+                _rag_cache.move_to_end(key)
+                cached_copy = dict(entry)
+                cached_copy["latency"] = 0.001
+                return cached_copy
+            else:
+                _rag_cache.pop(key, None)
+    return None
+
+
+def _set_cached_rag(key: str, result: Dict[str, Any]) -> None:
+    with _rag_cache_lock:
+        _rag_cache[key] = (result, time.time())
+        _rag_cache.move_to_end(key)
+        if len(_rag_cache) > MAX_RAG_CACHE:
+            _rag_cache.popitem(last=False)
+
+
 def retrieve(
     question: str,
     top_k: int = 5,
@@ -200,6 +230,13 @@ def retrieve(
     """Full RAG pipeline: embed question, route by intent tags (soft), search the
     configured corpus plus a guaranteed curated pool, re-rank by source trust,
     cap legacy noise, build context."""
+    cache_key = None
+    if not filter_dict:
+        cache_key = f"{question.strip().lower()}:{top_k}"
+        cached = _get_cached_rag(cache_key)
+        if cached:
+            return cached
+
     start_time = time.time()
 
     # Concurrently generate dense and sparse embeddings to minimize prefill latency
@@ -272,7 +309,7 @@ def retrieve(
 
     latency = time.time() - start_time
 
-    return {
+    res = {
         "context": context,
         "points": points,
         "latency": latency,
@@ -282,6 +319,9 @@ def retrieve(
         "tags_applied": tags_applied,
         "is_hybrid": bool(settings.RAG_HYBRID_SEARCH and sparse_vector and sparse_vector.get("indices")),
     }
+    if cache_key:
+        _set_cached_rag(cache_key, res)
+    return res
 
 
 def _build_prompt(

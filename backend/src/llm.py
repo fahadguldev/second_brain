@@ -27,12 +27,9 @@ class GeminiLLM:
             if system_instructions:
                 full_prompt = f"{system_instructions}\n\nUser: {prompt}"
 
-            config = (
-                types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
-                )
-                if thinking_budget is not None
-                else None
+            config = types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget) if thinking_budget is not None else None,
+                http_options=types.HttpOptions(timeout=10000),
             )
 
             response = gemini_key_manager.run(
@@ -57,12 +54,9 @@ class GeminiLLM:
         if system_instructions:
             full_prompt = f"{system_instructions}\n\nUser: {prompt}"
 
-        config = (
-            types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
-            )
-            if thinking_budget is not None
-            else None
+        config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget) if thinking_budget is not None else None,
+            http_options=types.HttpOptions(timeout=10000),
         )
 
         try:

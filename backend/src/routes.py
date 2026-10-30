@@ -14,6 +14,7 @@ from src.chat_service import get_current_user, owned_conversation, serialize_mes
 from src.config import settings
 from src.database import ensure_collection
 from src.llm import GenerationError
+from src.message_queue import message_queue
 from src.rag import generate_answer, generate_answer_stream
 from fastapi import File, Form, UploadFile
 from src.voice_service import (
@@ -171,26 +172,19 @@ def ask_question(
 def ask_question_stream(
     req: AskRequest,
     response: Response,
-    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> StreamingResponse:
-    if req.conversation_id:
-        conversation = owned_conversation(db, req.conversation_id, user.id)
-        conversation_id = conversation.id
-        previous_messages = [
-            {"role": message.role, "content": message.content}
-            for message in conversation.messages[-10:]
-        ]
-        is_first_message = False
-    else:
-        conversation_id = str(uuid4())
-        previous_messages = []
-        is_first_message = True
-
+    # 1. Zero DB blocking: resolve history and IDs in memory in < 1ms
+    conversation_id = req.conversation_id or str(uuid4())
+    previous_messages = message_queue.get_conversation_history(req.conversation_id, limit=10)
     user_message_id = str(uuid4())
+    assistant_message_id = str(uuid4())
 
     try:
         result = generate_answer_stream(
-            question=req.question, top_k=req.top_k, filter_dict=req.filter_dict,
+            question=req.question,
+            top_k=req.top_k,
+            filter_dict=req.filter_dict,
             conversation_history=previous_messages,
         )
     except Exception as exc:
@@ -200,77 +194,48 @@ def ask_question_stream(
     user_question = req.question
 
     def events():
+        # Stream starts immediately: 0ms database overhead
         yield json.dumps({
-            "type": "metadata", "sources": result["sources"],
-            "latency": result["latency"], "model": result["model"],
+            "type": "metadata",
+            "sources": result["sources"],
+            "latency": result["latency"],
+            "model": result["model"],
             "embedding_model": result["embedding_model"],
         }) + "\n"
+
         answer_parts: list[str] = []
-        stream_db = SessionLocal()
         try:
             for text in result["stream"]:
                 answer_parts.append(text)
                 yield json.dumps({"type": "delta", "text": text}) + "\n"
 
-            stream_conversation = stream_db.get(Conversation, conversation_id)
-            if not stream_conversation:
-                stream_conversation = Conversation(
-                    id=conversation_id, user_id=user_id, title=user_question.strip()[:80]
-                )
-                stream_db.add(stream_conversation)
-            elif is_first_message:
-                stream_conversation.title = user_question.strip()[:80]
+            full_answer = "".join(answer_parts)
 
-            user_msg = Message(
-                id=user_message_id,
+            # Asynchronously enqueue for batch persistence in background (0ms blocking!)
+            message_queue.enqueue(
+                user_id=user_id,
                 conversation_id=conversation_id,
-                role="user",
-                content=user_question,
-            )
-            assistant_message = Message(
-                id=str(uuid4()),
-                conversation_id=conversation_id,
-                role="assistant",
-                content="".join(answer_parts),
+                user_message_id=user_message_id,
+                question=user_question,
+                assistant_message_id=assistant_message_id,
+                answer=full_answer,
                 model=result["model"],
                 embedding_model=result["embedding_model"],
                 latency=result["latency"],
                 sources=result["sources"],
             )
-            stream_db.add(user_msg)
-            stream_db.add(assistant_message)
-            stream_conversation.updated_at = utcnow()
-            stream_db.commit()
 
             yield json.dumps({
                 "type": "done",
                 "conversation_id": conversation_id,
                 "user_message_id": user_message_id,
-                "assistant_message_id": assistant_message.id,
+                "assistant_message_id": assistant_message_id,
             }) + "\n"
         except Exception:
-            try:
-                stream_conversation = stream_db.get(Conversation, conversation_id)
-                if not stream_conversation:
-                    stream_conversation = Conversation(
-                        id=conversation_id, user_id=user_id, title=user_question.strip()[:80]
-                    )
-                    stream_db.add(stream_conversation)
-                user_msg = Message(
-                    id=user_message_id,
-                    conversation_id=conversation_id,
-                    role="user",
-                    content=user_question,
-                )
-                stream_db.add(user_msg)
-                stream_db.commit()
-            except Exception:
-                stream_db.rollback()
             yield json.dumps({
-                "type": "error", "message": "Response generation was interrupted.",
+                "type": "error",
+                "message": "Response generation was interrupted.",
             }) + "\n"
-        finally:
-            stream_db.close()
 
     stream_response = StreamingResponse(
         events(), media_type="application/x-ndjson",
