@@ -1,5 +1,6 @@
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional
 from src.classifier import classify_topics
 from src.database import ensure_collection, insert_points, search_points
@@ -201,12 +202,16 @@ def retrieve(
     cap legacy noise, build context."""
     start_time = time.time()
 
-    query_vector = embedding_generator.embed(question)
-    sparse_vector = (
-        sparse_embedding_generator.embed(question)
-        if settings.RAG_HYBRID_SEARCH
-        else None
-    )
+    # Concurrently generate dense and sparse embeddings to minimize prefill latency
+    if settings.RAG_HYBRID_SEARCH:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            dense_future = executor.submit(embedding_generator.embed, question)
+            sparse_future = executor.submit(sparse_embedding_generator.embed, question)
+            query_vector = dense_future.result()
+            sparse_vector = sparse_future.result()
+    else:
+        query_vector = embedding_generator.embed(question)
+        sparse_vector = None
 
     candidate_pool = max(top_k * 8, 30)
     raw_floor = max(0.0, settings.RAG_SCORE_THRESHOLD - 0.15)
@@ -231,10 +236,12 @@ def retrieve(
         )
 
     def _collect(topics: Optional[List[str]], include_curated: bool = True) -> List[Dict[str, Any]]:
-        pools = [_search(topics=topics)]
         if include_curated:
-            pools.append(_search(topics=topics, source_types=curated_types))
-        return _merge_points(*pools)
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                pool_future = executor.submit(_search, topics=topics)
+                curated_future = executor.submit(_search, topics=topics, source_types=curated_types)
+                return _merge_points(pool_future.result(), curated_future.result())
+        return _merge_points(_search(topics=topics))
 
     # Route by intent: classify the question against the brain_config lexicon and
     # restrict candidates to chunks carrying any matched topic. Soft rule — if the

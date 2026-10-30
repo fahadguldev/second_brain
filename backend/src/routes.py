@@ -175,22 +175,18 @@ def ask_question_stream(
 ) -> StreamingResponse:
     if req.conversation_id:
         conversation = owned_conversation(db, req.conversation_id, user.id)
+        conversation_id = conversation.id
+        previous_messages = [
+            {"role": message.role, "content": message.content}
+            for message in conversation.messages[-10:]
+        ]
+        is_first_message = False
     else:
-        conversation = Conversation(id=str(uuid4()), user_id=user.id)
-        db.add(conversation)
+        conversation_id = str(uuid4())
+        previous_messages = []
+        is_first_message = True
 
-    previous_messages = [
-        {"role": message.role, "content": message.content}
-        for message in conversation.messages[-10:]
-    ]
-    user_message = Message(
-        id=str(uuid4()), conversation=conversation, role="user", content=req.question,
-    )
-    db.add(user_message)
-    if not previous_messages:
-        conversation.title = req.question.strip()[:80]
-    conversation.updated_at = utcnow()
-    db.commit()
+    user_message_id = str(uuid4())
 
     try:
         result = generate_answer_stream(
@@ -200,8 +196,8 @@ def ask_question_stream(
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Could not prepare response") from exc
 
-    conversation_id = conversation.id
-    user_message_id = user_message.id
+    user_id = user.id
+    user_question = req.question
 
     def events():
         yield json.dumps({
@@ -216,24 +212,60 @@ def ask_question_stream(
                 answer_parts.append(text)
                 yield json.dumps({"type": "delta", "text": text}) + "\n"
 
+            stream_conversation = stream_db.get(Conversation, conversation_id)
+            if not stream_conversation:
+                stream_conversation = Conversation(
+                    id=conversation_id, user_id=user_id, title=user_question.strip()[:80]
+                )
+                stream_db.add(stream_conversation)
+            elif is_first_message:
+                stream_conversation.title = user_question.strip()[:80]
+
+            user_msg = Message(
+                id=user_message_id,
+                conversation_id=conversation_id,
+                role="user",
+                content=user_question,
+            )
             assistant_message = Message(
-                id=str(uuid4()), conversation_id=conversation_id, role="assistant",
-                content="".join(answer_parts), model=result["model"],
-                embedding_model=result["embedding_model"], latency=result["latency"],
+                id=str(uuid4()),
+                conversation_id=conversation_id,
+                role="assistant",
+                content="".join(answer_parts),
+                model=result["model"],
+                embedding_model=result["embedding_model"],
+                latency=result["latency"],
                 sources=result["sources"],
             )
-            stream_conversation = stream_db.get(Conversation, conversation_id)
+            stream_db.add(user_msg)
             stream_db.add(assistant_message)
-            if stream_conversation:
-                stream_conversation.updated_at = utcnow()
+            stream_conversation.updated_at = utcnow()
             stream_db.commit()
+
             yield json.dumps({
-                "type": "done", "conversation_id": conversation_id,
+                "type": "done",
+                "conversation_id": conversation_id,
                 "user_message_id": user_message_id,
                 "assistant_message_id": assistant_message.id,
             }) + "\n"
         except Exception:
-            stream_db.rollback()
+            try:
+                stream_conversation = stream_db.get(Conversation, conversation_id)
+                if not stream_conversation:
+                    stream_conversation = Conversation(
+                        id=conversation_id, user_id=user_id, title=user_question.strip()[:80]
+                    )
+                    stream_db.add(stream_conversation)
+                user_msg = Message(
+                    id=user_message_id,
+                    conversation_id=conversation_id,
+                    role="user",
+                    content=user_question,
+                )
+                stream_db.add(user_msg)
+                stream_db.commit()
+            except Exception:
+                stream_db.rollback()
             yield json.dumps({
                 "type": "error", "message": "Response generation was interrupted.",
             }) + "\n"
