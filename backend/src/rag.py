@@ -252,15 +252,19 @@ def retrieve(
         query_topics = classify_topics(text=question)
 
     if query_topics:
-        # Require a minimum number of tagged hits, else soft-fallback to untagged.
-        tags_applied = len(_search(topics=query_topics)) >= settings.RAG_TAG_MIN_HITS
+        tagged_pool = _collect(query_topics)
+        if len(tagged_pool) >= settings.RAG_TAG_MIN_HITS:
+            tags_applied = True
+            points = _rerank(tagged_pool, top_k)
+        else:
+            tags_applied = False
+            points = _rerank(_collect(None), top_k)
+    else:
+        tags_applied = False
+        points = _rerank(_collect(None), top_k)
 
-    active_topics = query_topics if tags_applied else None
-    points = _rerank(_collect(active_topics), top_k)
-
-    if len(points) < top_k:
+    if len(points) < top_k and tags_applied:
         # Tagged/curated pool left slots empty → top up from the untagged corpus.
-        # Rerank the raw pool first so only fused scores are merged/compared.
         points = _rerank(_merge_points(points, _rerank(_collect(None), candidate_pool)), top_k)
 
     # Build context

@@ -38,8 +38,14 @@ def get_current_user(
     if user is None:
         user = User(id=user_id)
         db.add(user)
-    user.last_seen_at = utcnow()
-    db.commit()
+        user.last_seen_at = utcnow()
+        db.commit()
+    else:
+        # Throttle last_seen_at updates: do not block every query with a 600ms+ remote DB write
+        now = utcnow()
+        if user.last_seen_at is None or (now - user.last_seen_at).total_seconds() > 900:
+            user.last_seen_at = now
+            db.commit()
     response.headers["X-Visitor-Id"] = user_id
     if existing_id != user_id:
         response.set_cookie(
