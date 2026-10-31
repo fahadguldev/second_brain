@@ -8,6 +8,10 @@
     "frontend": {
       "root": "frontend",
       "framework": "vite",
+      "rewrites": [
+        { "source": "/admin", "destination": "/index.html" },
+        { "source": "/admin/(.*)", "destination": "/index.html" }
+      ],
       "bindings": [
         {
           "type": "service",
@@ -23,6 +27,20 @@
       "source": "/api/(.*)",
       "destination": {
         "service": "backend"
+      }
+    },
+    {
+      "source": "/admin",
+      "destination": {
+        "service": "frontend",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": {
+        "service": "frontend",
+        "path": "/index.html"
       }
     },
     {
