@@ -81,7 +81,8 @@ class GeminiKeyManager:
             except Exception as exc:
                 errors.append(str(exc))
                 with self._lock:
-                    state.cooldown_until = time.time() + 60
+                    is_fatal = any(term in str(exc) for term in ("401", "UNAUTHENTICATED", "403", "PERMISSION_DENIED"))
+                    state.cooldown_until = time.time() + (86400 if is_fatal else 60)
                 print(f"Gemini API key failed ({exc}); trying next key.")
 
         raise RuntimeError(f"All Gemini API keys failed. Last errors: {' | '.join(errors)}")
@@ -104,7 +105,8 @@ class GeminiKeyManager:
             except Exception as exc:
                 errors.append(str(exc))
                 with self._lock:
-                    state.cooldown_until = time.time() + 60
+                    is_fatal = any(term in str(exc) for term in ("401", "UNAUTHENTICATED", "403", "PERMISSION_DENIED"))
+                    state.cooldown_until = time.time() + (86400 if is_fatal else 60)
                 if emitted:
                     raise
                 print(f"Gemini API key failed ({exc}); trying next key.")

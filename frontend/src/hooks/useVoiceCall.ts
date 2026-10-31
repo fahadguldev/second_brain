@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AudioQueuePlayer } from '../lib/audioQueuePlayer'
+import { SentenceSplitter } from '../lib/sentenceSplitter'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
@@ -10,7 +12,7 @@ interface IWindow extends Window {
 }
 
 interface UseVoiceCallProps {
-  onSendMessage: (text: string) => Promise<string | null>
+  onSendMessage: (text: string, onDelta?: (token: string) => void) => Promise<string | null>
   isThinking: boolean
 }
 
@@ -22,12 +24,14 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
   const [currentTranscript, setCurrentTranscript] = useState('')
   const [lastAIResponse, setLastAIResponse] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [provider, setProvider] = useState<string>('elevenlabs')
 
   const recognitionRef = useRef<any>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const silenceTimeoutRef = useRef<any>(null)
   const timerIntervalRef = useRef<any>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
+  const audioQueueRef = useRef<AudioQueuePlayer | null>(null)
 
   const isCallActiveRef = useRef(false)
   const isMutedRef = useRef(false)
@@ -37,6 +41,50 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
   const updateCallState = useCallback((newState: CallState) => {
     callStateRef.current = newState
     setCallState(newState)
+  }, [])
+
+  // Initialize and maintain the AudioQueuePlayer
+  if (!audioQueueRef.current) {
+    audioQueueRef.current = new AudioQueuePlayer({
+      provider,
+      onSentenceStart: (sentence: string) => {
+        if (isCallActiveRef.current) {
+          updateCallState('speaking')
+          setLastAIResponse(sentence)
+        }
+      },
+      onAllCompleted: () => {
+        if (isCallActiveRef.current && callStateRef.current === 'speaking') {
+          updateCallState('listening')
+          setCurrentTranscript('')
+        }
+      },
+      onError: (errMsg: string) => {
+        console.warn('[useVoiceCall] Audio queue error:', errMsg)
+        setError(errMsg)
+      },
+    })
+  }
+
+  useEffect(() => {
+    if (audioQueueRef.current) {
+      audioQueueRef.current.setOptions({ provider })
+    }
+  }, [provider])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_URL}/api/voice/status`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!cancelled && data?.provider) {
+          setProvider(data.provider)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -63,82 +111,14 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
   }, [isCallActive])
 
   const stopActiveAudio = useCallback(() => {
+    audioQueueRef.current?.stop()
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
     }
   }, [])
 
-  const playAIResponse = useCallback(
-    async (text: string) => {
-      if (!isCallActiveRef.current) return
-      updateCallState('speaking')
-      setLastAIResponse(text)
-
-      try {
-        console.log('[VoiceCall] Requesting TTS for answer (length:', text.length, ')')
-        const res = await fetch(`${API_URL}/api/tts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
-        })
-
-        if (!res.ok) {
-          let detail = 'Voice playback failed'
-          try {
-            const errJson = await res.json()
-            detail = errJson.detail || detail
-          } catch {
-            // ignore
-          }
-          throw new Error(detail)
-        }
-
-        const blob = await res.blob()
-        if (!isCallActiveRef.current || callStateRef.current !== 'speaking') {
-          console.log('[VoiceCall] Barge-in or end occurred while TTS was downloading; skipping.')
-          return
-        }
-
-        const objectUrl = URL.createObjectURL(blob)
-        let audio = audioRef.current
-        if (!audio) {
-          audio = new Audio()
-          audioRef.current = audio
-        }
-        audio.src = objectUrl
-
-        audio.onended = () => {
-          URL.revokeObjectURL(objectUrl)
-          // Audio finished: return smoothly to listening for the user!
-          if (isCallActiveRef.current && callStateRef.current === 'speaking') {
-            updateCallState('listening')
-            setCurrentTranscript('')
-          }
-        }
-
-        audio.onerror = (e) => {
-          console.error('[VoiceCall] Audio error:', e)
-          URL.revokeObjectURL(objectUrl)
-          if (isCallActiveRef.current) {
-            updateCallState('listening')
-          }
-        }
-
-        await audio.play()
-      } catch (err: any) {
-        console.error('[VoiceCall] Voice playback failed:', err)
-        setError(err?.message || 'Could not synthesize voice')
-        setTimeout(() => {
-          if (isCallActiveRef.current && callStateRef.current === 'speaking') {
-            updateCallState('listening')
-          }
-        }, 1500)
-      }
-    },
-    [updateCallState],
-  )
-
+  // Ultra-Fast Sentence-Pipelined RAG Execution
   const processUserSpeech = useCallback(
     async (textToSubmit: string) => {
       const trimmed = textToSubmit.trim()
@@ -154,35 +134,48 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
       updateCallState('processing')
       setError(null)
 
-      try {
-        console.log('[VoiceCall] Submitting spoken query to RAG:', trimmed)
-        const answer = await onSendMessage(trimmed)
-        if (!isCallActiveRef.current) return
+      const audioQueue = audioQueueRef.current!
+      audioQueue.resetStream()
 
-        // If user hung up or explicitly interrupted, don't speak
-        if ((callStateRef.current as CallState) !== 'processing') {
-          console.log('[VoiceCall] State changed during RAG generation:', callStateRef.current)
+      // Pipelining engine: as soon as Sentence 1 arrives from LLM stream, queue it immediately to TTS!
+      const splitter = new SentenceSplitter((sentence: string) => {
+        if (!isCallActiveRef.current) return
+        console.log('[VoiceCall] Streamed sentence ready for TTS:', sentence)
+        audioQueue.queueSentence(sentence)
+      })
+
+      try {
+        console.log('[VoiceCall] Submitting spoken query to RAG with sentence pipelining:', trimmed)
+        const answer = await onSendMessage(trimmed, (deltaText: string) => {
+          if (!isCallActiveRef.current) return
+          splitter.feed(deltaText)
+        })
+
+        if (!isCallActiveRef.current) {
+          audioQueue.stop()
           return
         }
 
-        if (answer) {
-          console.log('[VoiceCall] RAG answered, starting TTS playback...')
-          await playAIResponse(answer)
-        } else {
-          console.warn('[VoiceCall] RAG returned empty or null answer')
+        // Flush any trailing clause at the end of the stream
+        splitter.flush()
+        audioQueue.setStreamDone()
+
+        if (!answer && !audioQueue.getIsPlaying()) {
+          console.warn('[VoiceCall] RAG returned empty answer')
           updateCallState('listening')
           setCurrentTranscript('')
         }
       } catch (err: any) {
         console.error('[VoiceCall] Processing speech error:', err)
         setError('Failed to process message')
+        audioQueue.stop()
         updateCallState('listening')
       }
     },
-    [onSendMessage, playAIResponse, updateCallState],
+    [onSendMessage, updateCallState],
   )
 
-  // Direct In-Call Text Input: skips STT completely!
+  // Direct In-Call Text Input: skips STT completely with the same sub-second sentence pipelining!
   const sendTextMessage = useCallback(
     async (textToSubmit: string) => {
       const trimmed = textToSubmit.trim()
@@ -198,31 +191,46 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
         silenceTimeoutRef.current = null
       }
 
-      // Update transcript and enter processing state (bypassing STT entirely!)
       setCurrentTranscript(trimmed)
       updateCallState('processing')
       setError(null)
 
+      const audioQueue = audioQueueRef.current!
+      audioQueue.resetStream()
+
+      const splitter = new SentenceSplitter((sentence: string) => {
+        if (!isCallActiveRef.current) return
+        console.log('[VoiceCall] Typed query streamed sentence ready for TTS:', sentence)
+        audioQueue.queueSentence(sentence)
+      })
+
       try {
         console.log('[VoiceCall] Submitting typed query to RAG (STT bypassed):', trimmed)
-        const answer = await onSendMessage(trimmed)
-        if (!isCallActiveRef.current) return
-        if ((callStateRef.current as CallState) !== 'processing') return
+        const answer = await onSendMessage(trimmed, (deltaText: string) => {
+          if (!isCallActiveRef.current) return
+          splitter.feed(deltaText)
+        })
 
-        if (answer) {
-          console.log('[VoiceCall] RAG answered typed query, starting TTS playback...')
-          await playAIResponse(answer)
-        } else {
+        if (!isCallActiveRef.current) {
+          audioQueue.stop()
+          return
+        }
+
+        splitter.flush()
+        audioQueue.setStreamDone()
+
+        if (!answer && !audioQueue.getIsPlaying()) {
           updateCallState('listening')
           setCurrentTranscript('')
         }
       } catch (err: any) {
         console.error('[VoiceCall] Processing typed message error:', err)
         setError('Failed to process message')
+        audioQueue.stop()
         updateCallState('listening')
       }
     },
-    [onSendMessage, playAIResponse, stopActiveAudio, updateCallState],
+    [onSendMessage, stopActiveAudio, updateCallState],
   )
 
   // Voice recognition loop (remains continuously hot to enable natural voice barge-in)
@@ -277,7 +285,7 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
         const combined = (finalText + interimText).trim()
 
         if (combined) {
-          // NATURAL BARGE-IN: If AI is speaking and user speaks, cut off immediately!
+          // NATURAL BARGE-IN: If AI is speaking and user speaks, cut off audio immediately!
           if (callStateRef.current === 'speaking') {
             stopActiveAudio()
             updateCallState('listening')
@@ -287,14 +295,13 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
           if (callStateRef.current === 'listening') {
             setCurrentTranscript(combined)
 
-            // Reset silence timer on every spoken word
+            // Responsive silence detection: trigger after 650ms (reduced from 1200ms)
             if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current)
             silenceTimeoutRef.current = setTimeout(() => {
-              // User paused for 1.2s: auto-submit to the brain!
               if (combined.trim() && isCallActiveRef.current && callStateRef.current === 'listening') {
                 void processUserSpeech(combined.trim())
               }
-            }, 1200)
+            }, 650)
           }
         }
       }
@@ -358,6 +365,8 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
       // Pre-warm audio element for mobile browser autoplay unlock
       const dummyAudio = new Audio()
       dummyAudio.play().catch(() => {})
+      audioRef.current = dummyAudio
+      audioQueueRef.current?.initAudioElement(dummyAudio)
 
       updateCallState('listening')
       startRecognition()
@@ -410,6 +419,7 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
     stopActiveAudio()
     updateCallState('listening')
     setCurrentTranscript('')
+    setLastAIResponse('')
     startRecognition()
   }, [startRecognition, stopActiveAudio, updateCallState])
 
@@ -421,6 +431,7 @@ export function useVoiceCall({ onSendMessage, isThinking: _isThinking }: UseVoic
     currentTranscript,
     lastAIResponse,
     error,
+    provider,
     startCall,
     endCall,
     toggleMute,

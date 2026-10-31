@@ -13,6 +13,7 @@ export interface VoiceCallModalProps {
   currentTranscript: string
   lastAIResponse: string
   error: string | null
+  provider?: string
   onEndCall: () => void
   onToggleMute: () => void
   onInterrupt: () => void
@@ -33,6 +34,7 @@ export function VoiceCallModal({
   currentTranscript,
   lastAIResponse,
   error,
+  provider = 'elevenlabs',
   onEndCall,
   onToggleMute,
   onInterrupt,
@@ -97,9 +99,15 @@ export function VoiceCallModal({
               <Sparkle size={20} weight="fill" className="text-accent" />
             </div>
             <div>
-              <h2 className="text-sm font-bold tracking-tight">Fahad Gul</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold tracking-tight">Fahad Gul</h2>
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {provider === 'elevenlabs' ? 'ElevenLabs HD' : 'Live Call'}
+                </span>
+              </div>
               <p className="font-mono text-[11px] tracking-tight text-white/50">
-                1-on-1 Voice Call
+                Real-time 1-on-1 Voice Call
               </p>
             </div>
           </div>

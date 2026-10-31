@@ -3,12 +3,10 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Callable, List, Optional, Tuple, TypeVar
+from typing import List, Optional
 from src.config import settings
 
-logger = logging.getLogger("second_brain.jsf_keys")
-
-T = TypeVar("T")
+logger = logging.getLogger("second_brain.elevenlabs_keys")
 
 
 @dataclass
@@ -20,15 +18,15 @@ class KeyState:
     last_error: Optional[str] = None
 
 
-class JSFKeyManager:
+class ElevenLabsKeyManager:
     """
-    Manages a pool of recurring/rotating JSF Labs API keys.
+    Manages a pool of recurring/rotating ElevenLabs API keys.
     Automatically rotates to the next available key if a key is rate-limited (429),
-    expired/unauthorized (401/403), or out of credits (402).
+    unauthorized (401), or out of quota/credits (402/403).
     """
 
     def __init__(self, keys: Optional[List[str]] = None) -> None:
-        raw_keys = keys if keys is not None else settings.JSF_API_KEYS
+        raw_keys = keys if keys is not None else settings.ELEVENLABS_API_KEYS
         unique_keys = list(dict.fromkeys(k.strip() for k in raw_keys if k and k.strip()))
         self._states = [KeyState(api_key=key) for key in unique_keys]
         self._lock = Lock()
@@ -47,7 +45,6 @@ class JSFKeyManager:
             return sum(1 for s in self._states if s.cooldown_until <= now)
 
     def _prune(self, state: KeyState, now: float) -> None:
-        # JSF Labs rate limit is 50 requests per minute
         minute_cutoff = now - 60.0
         while state.minute_calls and state.minute_calls[0] < minute_cutoff:
             state.minute_calls.popleft()
@@ -57,7 +54,7 @@ class JSFKeyManager:
             now = time.time()
             count = len(self._states)
             if count == 0:
-                raise RuntimeError("No JSF Labs API keys configured in environment.")
+                raise RuntimeError("No ElevenLabs API keys configured in environment.")
 
             # Search round-robin for a healthy key
             for offset in range(count):
@@ -69,8 +66,8 @@ class JSFKeyManager:
                 if state.cooldown_until > now:
                     continue
 
-                # Skip if sliding window rate limit (50 req/min) hit
-                if len(state.minute_calls) >= 50:
+                # Conservative rate limit protection per key (max 60 req/min)
+                if len(state.minute_calls) >= 60:
                     continue
 
                 state.minute_calls.append(now)
@@ -81,7 +78,7 @@ class JSFKeyManager:
         earliest = min(self._states, key=lambda s: s.cooldown_until)
         wait_seconds = max(0.5, earliest.cooldown_until - time.time())
         raise RuntimeError(
-            f"All JSF Labs API keys are rate-limited or cooling down. Next key recovers in {wait_seconds:.1f}s."
+            f"All ElevenLabs API keys are rate-limited or cooling down. Next key recovers in {wait_seconds:.1f}s."
         )
 
     def mark_key_failure(
@@ -103,23 +100,22 @@ class JSFKeyManager:
                         cooldown = float(retry_after_seconds) if retry_after_seconds else 60.0
                         state.cooldown_until = now + cooldown
                         logger.warning(
-                            f"JSF Labs key ...{api_key[-6:]} rate-limited (429). Cooling down for {cooldown}s."
+                            f"ElevenLabs key ...{api_key[-6:]} rate-limited (429). Cooling down for {cooldown}s."
                         )
                     elif status_code in (401, 403):
                         # Key expired or invalid: cooldown for 1 hour so other keys take over
                         state.cooldown_until = now + 3600.0
                         logger.error(
-                            f"JSF Labs key ...{api_key[-6:]} authentication failed ({status_code}). Cooled down for 1hr."
+                            f"ElevenLabs key ...{api_key[-6:]} authentication failed ({status_code}). Cooled down for 1hr."
                         )
                     elif status_code == 402:
-                        # Out of credits: cooldown for 2 hours
+                        # Out of quota/credits: cooldown for 2 hours
                         state.cooldown_until = now + 7200.0
                         logger.error(
-                            f"JSF Labs key ...{api_key[-6:]} out of credits (402). Cooled down for 2hr."
+                            f"ElevenLabs key ...{api_key[-6:]} out of credits (402). Cooled down for 2hr."
                         )
                     else:
-                        # General failure cooldown
-                        state.cooldown_until = now + 30.0
+                        state.cooldown_until = now + 15.0
                     break
 
     def mark_key_success(self, api_key: str) -> None:
@@ -133,12 +129,24 @@ class JSFKeyManager:
     def get_status_summary(self) -> dict:
         now = time.time()
         with self._lock:
+            total = len(self._states)
+            active = sum(1 for s in self._states if s.cooldown_until <= now)
             return {
-                "total_keys": len(self._states),
-                "healthy_keys": sum(1 for s in self._states if s.cooldown_until <= now),
-                "cooling_down_keys": sum(1 for s in self._states if s.cooldown_until > now),
+                "total_keys": total,
+                "active_keys": active,
+                "cooling_down": total - active,
+                "keys": [
+                    {
+                        "prefix": f"...{s.api_key[-6:]}" if len(s.api_key) >= 6 else "masked",
+                        "status": "ready" if s.cooldown_until <= now else "cooling_down",
+                        "cooldown_remaining_sec": max(0, int(s.cooldown_until - now)),
+                        "calls_last_minute": len(s.minute_calls),
+                        "failed_attempts": s.failed_attempts,
+                        "last_error": s.last_error,
+                    }
+                    for s in self._states
+                ],
             }
 
 
-# Global singleton key manager
-jsf_key_manager = JSFKeyManager()
+elevenlabs_key_manager = ElevenLabsKeyManager()

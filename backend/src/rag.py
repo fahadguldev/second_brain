@@ -1,5 +1,8 @@
 import re
+import threading
 import time
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional
 from src.classifier import classify_topics
 from src.database import ensure_collection, insert_points, search_points
@@ -191,6 +194,34 @@ def _rerank(points: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
     return _apply_noise_cap(ranked, top_k)
 
 
+_rag_cache: OrderedDict[str, tuple[Dict[str, Any], float]] = OrderedDict()
+_rag_cache_lock = threading.Lock()
+MAX_RAG_CACHE = 150
+RAG_CACHE_TTL = 600.0  # 10 minutes cache
+
+
+def _get_cached_rag(key: str) -> Optional[Dict[str, Any]]:
+    with _rag_cache_lock:
+        if key in _rag_cache:
+            entry, ts = _rag_cache[key]
+            if time.time() - ts < RAG_CACHE_TTL:
+                _rag_cache.move_to_end(key)
+                cached_copy = dict(entry)
+                cached_copy["latency"] = 0.001
+                return cached_copy
+            else:
+                _rag_cache.pop(key, None)
+    return None
+
+
+def _set_cached_rag(key: str, result: Dict[str, Any]) -> None:
+    with _rag_cache_lock:
+        _rag_cache[key] = (result, time.time())
+        _rag_cache.move_to_end(key)
+        if len(_rag_cache) > MAX_RAG_CACHE:
+            _rag_cache.popitem(last=False)
+
+
 def retrieve(
     question: str,
     top_k: int = 5,
@@ -199,14 +230,25 @@ def retrieve(
     """Full RAG pipeline: embed question, route by intent tags (soft), search the
     configured corpus plus a guaranteed curated pool, re-rank by source trust,
     cap legacy noise, build context."""
+    cache_key = None
+    if not filter_dict:
+        cache_key = f"{question.strip().lower()}:{top_k}"
+        cached = _get_cached_rag(cache_key)
+        if cached:
+            return cached
+
     start_time = time.time()
 
-    query_vector = embedding_generator.embed(question)
-    sparse_vector = (
-        sparse_embedding_generator.embed(question)
-        if settings.RAG_HYBRID_SEARCH
-        else None
-    )
+    # Concurrently generate dense and sparse embeddings to minimize prefill latency
+    if settings.RAG_HYBRID_SEARCH:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            dense_future = executor.submit(embedding_generator.embed, question)
+            sparse_future = executor.submit(sparse_embedding_generator.embed, question)
+            query_vector = dense_future.result()
+            sparse_vector = sparse_future.result()
+    else:
+        query_vector = embedding_generator.embed(question)
+        sparse_vector = None
 
     candidate_pool = max(top_k * 8, 30)
     raw_floor = max(0.0, settings.RAG_SCORE_THRESHOLD - 0.15)
@@ -231,10 +273,12 @@ def retrieve(
         )
 
     def _collect(topics: Optional[List[str]], include_curated: bool = True) -> List[Dict[str, Any]]:
-        pools = [_search(topics=topics)]
         if include_curated:
-            pools.append(_search(topics=topics, source_types=curated_types))
-        return _merge_points(*pools)
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                pool_future = executor.submit(_search, topics=topics)
+                curated_future = executor.submit(_search, topics=topics, source_types=curated_types)
+                return _merge_points(pool_future.result(), curated_future.result())
+        return _merge_points(_search(topics=topics))
 
     # Route by intent: classify the question against the brain_config lexicon and
     # restrict candidates to chunks carrying any matched topic. Soft rule — if the
@@ -245,15 +289,19 @@ def retrieve(
         query_topics = classify_topics(text=question)
 
     if query_topics:
-        # Require a minimum number of tagged hits, else soft-fallback to untagged.
-        tags_applied = len(_search(topics=query_topics)) >= settings.RAG_TAG_MIN_HITS
+        tagged_pool = _collect(query_topics)
+        if len(tagged_pool) >= settings.RAG_TAG_MIN_HITS:
+            tags_applied = True
+            points = _rerank(tagged_pool, top_k)
+        else:
+            tags_applied = False
+            points = _rerank(_collect(None), top_k)
+    else:
+        tags_applied = False
+        points = _rerank(_collect(None), top_k)
 
-    active_topics = query_topics if tags_applied else None
-    points = _rerank(_collect(active_topics), top_k)
-
-    if len(points) < top_k:
+    if len(points) < top_k and tags_applied:
         # Tagged/curated pool left slots empty → top up from the untagged corpus.
-        # Rerank the raw pool first so only fused scores are merged/compared.
         points = _rerank(_merge_points(points, _rerank(_collect(None), candidate_pool)), top_k)
 
     # Build context
@@ -261,7 +309,7 @@ def retrieve(
 
     latency = time.time() - start_time
 
-    return {
+    res = {
         "context": context,
         "points": points,
         "latency": latency,
@@ -271,6 +319,9 @@ def retrieve(
         "tags_applied": tags_applied,
         "is_hybrid": bool(settings.RAG_HYBRID_SEARCH and sparse_vector and sparse_vector.get("indices")),
     }
+    if cache_key:
+        _set_cached_rag(cache_key, res)
+    return res
 
 
 def _build_prompt(

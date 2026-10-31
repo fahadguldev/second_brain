@@ -52,6 +52,19 @@ def _detect_collection_vectors(info: Any) -> Tuple[str, bool]:
     return dense_name, has_sparse
 
 
+_cached_collection_vectors: Dict[str, Tuple[str, bool]] = {}
+
+
+def _get_cached_vector_info(client: QdrantClient, coll_name: str) -> Tuple[str, bool]:
+    """Retrieve collection vector configuration from memory cache to avoid 600ms+ network round-trips."""
+    if coll_name in _cached_collection_vectors:
+        return _cached_collection_vectors[coll_name]
+    info = client.get_collection(collection_name=coll_name)
+    dense_name, has_sparse = _detect_collection_vectors(info)
+    _cached_collection_vectors[coll_name] = (dense_name, has_sparse)
+    return dense_name, has_sparse
+
+
 def ensure_collection(vector_size: int = 3072) -> bool:
     """Check that the Qdrant collection exists or create it with hybrid dense+sparse vectors."""
     try:
@@ -82,6 +95,7 @@ def ensure_collection(vector_size: int = 3072) -> bool:
                         )
                     },
                 )
+                _cached_collection_vectors.pop(coll_name, None)
             else:
                 raise get_exc
 
@@ -241,8 +255,7 @@ def search_points(
 
     try:
         coll_name = get_collection_name()
-        info = client.get_collection(collection_name=coll_name)
-        dense_name, has_sparse = _detect_collection_vectors(info)
+        dense_name, has_sparse = _get_cached_vector_info(client, coll_name)
 
         # Check if Hybrid Search can be executed
         can_hybrid = (

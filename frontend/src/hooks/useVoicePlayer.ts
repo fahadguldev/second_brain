@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { cleanTextForSpeech } from '../lib/voiceUtils'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-interface VoiceStatus {
+export interface VoiceStatus {
   provider?: string
   configured: boolean
   voice_id?: string | null
-  tts_model?: string | null
-  asr_model?: string | null
+  model_id?: string | null
+  speed?: number
+  available_providers?: string[]
 }
 
 export function useVoicePlayer() {
@@ -20,7 +22,7 @@ export function useVoicePlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioCacheRef = useRef<Map<string, string>>(new Map()) // messageId -> objectURL
 
-  // Fetch Fish Audio configuration status from backend on mount
+  // Fetch ElevenLabs / voice configuration status from backend on mount
   useEffect(() => {
     let cancelled = false
     fetch(`${API_URL}/api/voice/status`)
@@ -78,10 +80,18 @@ export function useVoicePlayer() {
         let objectUrl = audioCacheRef.current.get(messageId)
 
         if (!objectUrl) {
+          const sanitizedText = cleanTextForSpeech(text)
+          if (!sanitizedText) {
+            throw new Error('Message contains no voiceable text.')
+          }
+
           const res = await fetch(`${API_URL}/api/tts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({
+              text: sanitizedText,
+              provider: voiceStatus?.provider || 'elevenlabs',
+            }),
           })
 
           if (!res.ok) {
@@ -117,14 +127,14 @@ export function useVoicePlayer() {
         await audio.play()
         setPlayingId(messageId)
       } catch (err: any) {
-        console.error('TTS playback failed:', err)
+        console.error('ElevenLabs TTS playback failed:', err)
         setErrorId(messageId)
         setErrorMessage(err?.message || 'Could not play voice')
       } finally {
         setLoadingId(null)
       }
     },
-    [playingId, stop],
+    [playingId, stop, voiceStatus?.provider],
   )
 
   return {
@@ -132,7 +142,9 @@ export function useVoicePlayer() {
     loadingId,
     errorId,
     errorMessage,
+    provider: voiceStatus?.provider || 'elevenlabs',
     isVoiceConfigured: voiceStatus?.configured ?? true,
+    voiceStatus,
     play,
     stop,
   }

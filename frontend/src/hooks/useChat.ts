@@ -113,52 +113,54 @@ export function useChat() {
     setMessages([])
   }, [])
 
-  const sendMessage = useCallback(async (text: string): Promise<string | null> => {
-    const trimmed = text.trim()
-    if (!trimmed || isThinking) return null
-    let accumulatedAnswer = ''
-    const optimisticId = makeId()
-    const assistantId = makeId()
-    const controller = new AbortController()
-    streamAbortRef.current?.abort()
-    streamAbortRef.current = controller
-    setMessages(prev => [
-      ...prev,
-      { id: optimisticId, role: 'user', text: trimmed },
-      { id: assistantId, role: 'assistant', text: '', pending: true },
-    ])
-    setIsThinking(true)
-    try {
-      const res = await request('/api/ask/stream', {
-        method: 'POST',
-        body: JSON.stringify({ question: trimmed, conversation_id: activeConversationId }),
-        signal: controller.signal,
-      })
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}))
-        if (res.status === 404 && activeConversationId) {
-          setActiveConversationId(null)
-        }
-        throw new Error(data.detail || 'Request failed')
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let info: AssistantInfo = {}
-
-      const handleEvent = (event: StreamEvent) => {
-        if (event.type === 'metadata') {
-          info = {
-            latency: event.latency, model: event.model,
-            embeddingModel: event.embedding_model, sources: event.sources || [],
+  const sendMessage = useCallback(
+    async (text: string, onDelta?: (token: string) => void): Promise<string | null> => {
+      const trimmed = text.trim()
+      if (!trimmed || isThinking) return null
+      let accumulatedAnswer = ''
+      const optimisticId = makeId()
+      const assistantId = makeId()
+      const controller = new AbortController()
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = controller
+      setMessages(prev => [
+        ...prev,
+        { id: optimisticId, role: 'user', text: trimmed },
+        { id: assistantId, role: 'assistant', text: '', pending: true },
+      ])
+      setIsThinking(true)
+      try {
+        const res = await request('/api/ask/stream', {
+          method: 'POST',
+          body: JSON.stringify({ question: trimmed, conversation_id: activeConversationId }),
+          signal: controller.signal,
+        })
+        if (!res.ok || !res.body) {
+          const data = await res.json().catch(() => ({}))
+          if (res.status === 404 && activeConversationId) {
+            setActiveConversationId(null)
           }
-          return
+          throw new Error(data.detail || 'Request failed')
         }
-        if (event.type === 'error') throw new Error(event.message)
-        if (event.type === 'delta') {
-          accumulatedAnswer += event.text
-        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let info: AssistantInfo = {}
+
+        const handleEvent = (event: StreamEvent) => {
+          if (event.type === 'metadata') {
+            info = {
+              latency: event.latency, model: event.model,
+              embeddingModel: event.embedding_model, sources: event.sources || [],
+            }
+            return
+          }
+          if (event.type === 'error') throw new Error(event.message)
+          if (event.type === 'delta') {
+            accumulatedAnswer += event.text
+            onDelta?.(event.text)
+          }
         if (event.type === 'done') {
           setMessages(prev => prev.map(message => {
             if (message.id === optimisticId) return { ...message, id: event.user_message_id }

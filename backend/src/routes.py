@@ -14,16 +14,19 @@ from src.chat_service import get_current_user, owned_conversation, serialize_mes
 from src.config import settings
 from src.database import ensure_collection
 from src.llm import GenerationError
+from src.message_queue import message_queue
 from src.rag import generate_answer, generate_answer_stream
 from fastapi import File, Form, UploadFile
 from src.voice_service import (
     get_voice_status,
+    get_audio_media_type,
     synthesize_speech,
     synthesize_speech_stream,
     clone_voice,
     VoiceConfigurationError,
     VoiceServiceError,
 )
+import src.elevenlabs_service as elevenlabs_svc
 
 router = APIRouter(prefix="/api", tags=["second-brain"])
 
@@ -169,74 +172,70 @@ def ask_question(
 def ask_question_stream(
     req: AskRequest,
     response: Response,
-    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> StreamingResponse:
-    if req.conversation_id:
-        conversation = owned_conversation(db, req.conversation_id, user.id)
-    else:
-        conversation = Conversation(id=str(uuid4()), user_id=user.id)
-        db.add(conversation)
-
-    previous_messages = [
-        {"role": message.role, "content": message.content}
-        for message in conversation.messages[-10:]
-    ]
-    user_message = Message(
-        id=str(uuid4()), conversation=conversation, role="user", content=req.question,
-    )
-    db.add(user_message)
-    if not previous_messages:
-        conversation.title = req.question.strip()[:80]
-    conversation.updated_at = utcnow()
-    db.commit()
+    # 1. Zero DB blocking: resolve history and IDs in memory in < 1ms
+    conversation_id = req.conversation_id or str(uuid4())
+    previous_messages = message_queue.get_conversation_history(req.conversation_id, limit=10)
+    user_message_id = str(uuid4())
+    assistant_message_id = str(uuid4())
 
     try:
         result = generate_answer_stream(
-            question=req.question, top_k=req.top_k, filter_dict=req.filter_dict,
+            question=req.question,
+            top_k=req.top_k,
+            filter_dict=req.filter_dict,
             conversation_history=previous_messages,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Could not prepare response") from exc
 
-    conversation_id = conversation.id
-    user_message_id = user_message.id
+    user_id = user.id
+    user_question = req.question
 
     def events():
+        # Stream starts immediately: 0ms database overhead
         yield json.dumps({
-            "type": "metadata", "sources": result["sources"],
-            "latency": result["latency"], "model": result["model"],
+            "type": "metadata",
+            "sources": result["sources"],
+            "latency": result["latency"],
+            "model": result["model"],
             "embedding_model": result["embedding_model"],
         }) + "\n"
+
         answer_parts: list[str] = []
-        stream_db = SessionLocal()
         try:
             for text in result["stream"]:
                 answer_parts.append(text)
                 yield json.dumps({"type": "delta", "text": text}) + "\n"
 
-            assistant_message = Message(
-                id=str(uuid4()), conversation_id=conversation_id, role="assistant",
-                content="".join(answer_parts), model=result["model"],
-                embedding_model=result["embedding_model"], latency=result["latency"],
+            full_answer = "".join(answer_parts)
+
+            # Asynchronously enqueue for batch persistence in background (0ms blocking!)
+            message_queue.enqueue(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                user_message_id=user_message_id,
+                question=user_question,
+                assistant_message_id=assistant_message_id,
+                answer=full_answer,
+                model=result["model"],
+                embedding_model=result["embedding_model"],
+                latency=result["latency"],
                 sources=result["sources"],
             )
-            stream_conversation = stream_db.get(Conversation, conversation_id)
-            stream_db.add(assistant_message)
-            if stream_conversation:
-                stream_conversation.updated_at = utcnow()
-            stream_db.commit()
+
             yield json.dumps({
-                "type": "done", "conversation_id": conversation_id,
+                "type": "done",
+                "conversation_id": conversation_id,
                 "user_message_id": user_message_id,
-                "assistant_message_id": assistant_message.id,
+                "assistant_message_id": assistant_message_id,
             }) + "\n"
         except Exception:
-            stream_db.rollback()
             yield json.dumps({
-                "type": "error", "message": "Response generation was interrupted.",
+                "type": "error",
+                "message": "Response generation was interrupted.",
             }) + "\n"
-        finally:
-            stream_db.close()
 
     stream_response = StreamingResponse(
         events(), media_type="application/x-ndjson",
@@ -255,13 +254,18 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=50_000)
     voice_id: Optional[str] = Field(default=None, max_length=128)
     speed: Optional[float] = Field(default=None, ge=0.5, le=2.0)
+    provider: Optional[str] = Field(default=None, max_length=32)
+    model_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class VoiceStatusResponse(BaseModel):
-    provider: str = "jsflabs"
+    provider: str = "elevenlabs"
     configured: bool
     voice_id: Optional[str] = None
+    model_id: Optional[str] = None
     speed: float = 1.0
+    has_user_id: bool = False
+    available_providers: List[str] = Field(default_factory=list)
     key_pool: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -269,8 +273,10 @@ class VoiceCloneResponse(BaseModel):
     success: bool
     voice_id: Optional[str]
     name: str
-    gender: str
-    language: str
+    gender: Optional[str] = None
+    language: Optional[str] = None
+    description: Optional[str] = None
+    provider: Optional[str] = "elevenlabs"
 
 
 @router.get("/voice/status", response_model=VoiceStatusResponse)
@@ -283,6 +289,16 @@ def tts_status() -> VoiceStatusResponse:
     return VoiceStatusResponse(**get_voice_status())
 
 
+@router.get("/voice/voices")
+async def get_voices_list():
+    """Fetch available voices for voice calls and listening."""
+    try:
+        voices = await elevenlabs_svc.list_voices()
+        return {"provider": "elevenlabs", "voices": voices}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch voices: {str(exc)}") from exc
+
+
 @router.post("/tts")
 async def generate_speech(req: TTSRequest):
     try:
@@ -290,12 +306,16 @@ async def generate_speech(req: TTSRequest):
             req.text,
             voice_id=req.voice_id,
             speed=req.speed,
+            provider=req.provider,
+            model_id=req.model_id,
         )
+        media_type = get_audio_media_type(req.provider)
+        ext = "mp3" if "mpeg" in media_type else "wav"
         return Response(
             content=audio_bytes,
-            media_type="audio/wav",
+            media_type=media_type,
             headers={
-                "Content-Disposition": 'inline; filename="speech.wav"',
+                "Content-Disposition": f'inline; filename="speech.{ext}"',
                 "Cache-Control": "public, max-age=86400",
             },
         )
@@ -306,15 +326,22 @@ async def generate_speech(req: TTSRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"JSF Labs TTS failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail=f"TTS failed: {str(exc)}") from exc
 
 
 @router.post("/tts/stream")
 async def stream_speech(req: TTSRequest):
     try:
+        media_type = get_audio_media_type(req.provider)
         return StreamingResponse(
-            synthesize_speech_stream(req.text, voice_id=req.voice_id, speed=req.speed),
-            media_type="audio/wav",
+            synthesize_speech_stream(
+                req.text,
+                voice_id=req.voice_id,
+                speed=req.speed,
+                provider=req.provider,
+                model_id=req.model_id,
+            ),
+            media_type=media_type,
             headers={
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
@@ -323,7 +350,7 @@ async def stream_speech(req: TTSRequest):
     except VoiceConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"JSF Labs TTS stream failed: {str(exc)}") from exc
+        raise HTTPException(status_code=500, detail=f"TTS stream failed: {str(exc)}") from exc
 
 
 @router.post("/voice/clone", response_model=VoiceCloneResponse)
@@ -332,10 +359,10 @@ async def clone_voice_endpoint(
     name: str = Form(...),
     gender: str = Form(default="Male"),
     language: str = Form(default="en"),
+    provider: Optional[str] = Form(default=None),
 ):
     """
-    Clone a voice from an audio sample via JSF Labs API:
-    POST https://www.jsflabs.io/api/v1/voice-clone
+    Clone a voice from an audio sample via ElevenLabs.
     """
     audio_bytes = await audio.read()
     if not audio_bytes:
@@ -347,6 +374,7 @@ async def clone_voice_endpoint(
             gender=gender,
             language=language,
             filename=audio.filename or "sample.wav",
+            provider=provider,
         )
         return VoiceCloneResponse(**result)
     except VoiceConfigurationError as exc:
